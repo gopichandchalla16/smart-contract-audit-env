@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import List, Optional
 
 
@@ -13,24 +13,15 @@ class Observation(BaseModel):
 
 
 class Action(BaseModel):
-    findings: List[str] = Field(
-        description="List of vulnerability descriptions found"
-    )
-    severity: List[str] = Field(
-        description="Severity for each finding: high, medium, or low"
-    )
-    vulnerable_lines: List[int] = Field(
-        default=[],
-        description="Line numbers of vulnerable code"
-    )
-    explanation: str = Field(
-        description="Root cause analysis and recommended fix"
-    )
+    findings: List[str] = []
+    severity: List[str] = []
+    vulnerable_lines: List[int] = []
+    explanation: str = ""
 
 
 class RewardInfo(BaseModel):
-    value: float = Field(ge=0.0, le=1.0)
-    cumulative: float = Field(ge=0.0, le=1.0)
+    value: float
+    cumulative: float
     message: str = ""
     true_positives: int = 0
     false_positives: int = 0
@@ -42,10 +33,3 @@ class StepResult(BaseModel):
     reward: RewardInfo
     done: bool
     info: dict = {}
-
-
-class TaskInfo(BaseModel):
-    task_id: str
-    description: str
-    difficulty: str
-    max_steps: int
