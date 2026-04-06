@@ -1,4 +1,5 @@
-# Read the doc: https://huggingface.co/docs/hub/spaces-sdks-docker
+# OpenEnv Smart Contract Audit Environment
+# https://huggingface.co/docs/hub/spaces-sdks-docker
 FROM python:3.10-slim
 
 RUN useradd -m -u 1000 user
@@ -14,4 +15,4 @@ COPY --chown=user . /app
 
 EXPOSE 7860
 
-CMD ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860"]
