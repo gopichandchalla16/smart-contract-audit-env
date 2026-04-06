@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import sys
 import os
+import uvicorn
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -71,3 +72,17 @@ def audit(action: Action, task_id: str = "easy"):
     """Legacy audit endpoint — wraps /step for backward compatibility"""
     result = env.step(action=action, task_id=task_id)
     return result.dict()
+
+
+def main():
+    """Entry point for running the server."""
+    uvicorn.run(
+        "server.app:app",
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", 8000)),
+        reload=False
+    )
+
+
+if __name__ == "__main__":
+    main()
