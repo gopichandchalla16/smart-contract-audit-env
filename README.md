@@ -1,255 +1,119 @@
 ---
-title: Smart Contract Audit Env Environment Server
-emoji: 📞
-colorFrom: green
-colorTo: red
+title: Smart Contract Audit Env
+emoji: 🔍
+colorFrom: blue
+colorTo: purple
 sdk: docker
-pinned: false
-app_port: 8000
-base_path: /web
 tags:
   - openenv
+  - smart-contracts
+  - solidity
+  - security
+  - reinforcement-learning
+  - code-review
+  - web3
+pinned: false
 ---
 
-# Smart Contract Audit Env Environment
+# 🔍 Smart Contract Audit Environment
 
-A simple test environment that echoes back messages. Perfect for testing the env APIs as well as demonstrating environment usage patterns.
+An OpenEnv-compliant reinforcement learning environment where AI agents learn to audit Solidity smart contracts for security vulnerabilities.
 
-## Quick Start
+## 🌍 Environment Overview
 
-The simplest way to use the Smart Contract Audit Env environment is through the `SmartContractAuditEnv` class:
+Smart contract auditing is a critical real-world task — billions of dollars in DeFi protocols depend on identifying vulnerabilities like reentrancy, missing access control, and oracle manipulation. This environment trains AI agents to perform security audits autonomously.
 
-```python
-from smart_contract_audit_env import SmartContractAuditAction, SmartContractAuditEnv
+## 🎯 Tasks
 
-try:
-    # Create environment from Docker image
-    smart_contract_audit_envenv = SmartContractAuditEnv.from_docker_image("smart_contract_audit_env-env:latest")
+| Task | Difficulty | Vulnerabilities | Max Steps |
+|------|-----------|----------------|----------|
+| `easy` | Easy | 1 (Reentrancy) | 5 |
+| `medium` | Medium | 3 (Reentrancy, Access Control, tx.origin) | 5 |
+| `hard` | Hard | 4 (Reentrancy, Access Control, Oracle Manipulation, Integer Overflow) | 5 |
 
-    # Reset
-    result = smart_contract_audit_envenv.reset()
-    print(f"Reset: {result.observation.echoed_message}")
+## 📡 API Endpoints
 
-    # Send multiple messages
-    messages = ["Hello, World!", "Testing echo", "Final message"]
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/reset` | POST | Reset environment, get initial observation |
+| `/step` | POST | Submit audit action, get reward |
+| `/state` | GET | Get current environment state |
+| `/docs` | GET | Swagger UI |
 
-    for msg in messages:
-        result = smart_contract_audit_envenv.step(SmartContractAuditAction(message=msg))
-        print(f"Sent: '{msg}'")
-        print(f"  → Echoed: '{result.observation.echoed_message}'")
-        print(f"  → Length: {result.observation.message_length}")
-        print(f"  → Reward: {result.reward}")
+## 📥 Observation Space
 
-finally:
-    # Always clean up
-    smart_contract_audit_envenv.close()
+```json
+{
+  "task_id": "easy",
+  "task_description": "Audit this contract...",
+  "contract_code": "pragma solidity...",
+  "current_score": 0.0,
+  "last_feedback": "",
+  "step_count": 0,
+  "max_steps": 5
+}
 ```
 
-That's it! The `SmartContractAuditEnv.from_docker_image()` method handles:
-- Starting the Docker container
-- Waiting for the server to be ready
-- Connecting to the environment
-- Container cleanup when you call `close()`
+## 📤 Action Space
 
-## Building the Docker Image
+```json
+{
+  "findings": ["reentrancy vulnerability in withdraw()"],
+  "severity": ["high"],
+  "vulnerable_lines": [14],
+  "explanation": "External call before state update allows reentrancy attack"
+}
+```
 
-Before using the environment, you need to build the Docker image:
+## 🏆 Reward Function
+
+- **+1.0** per correctly identified vulnerability (normalized)
+- **-0.1** per false positive finding
+- **Partial credit** for finding some but not all vulnerabilities
+- **No-progress penalty** if score doesn't improve across steps
+
+## 🚀 Setup & Usage
+
+### Run Locally
 
 ```bash
-# From project root
-docker build -t smart_contract_audit_env-env:latest -f server/Dockerfile .
+git clone https://github.com/gopichandchalla16/smart-contract-audit-env
+cd smart-contract-audit-env
+pip install -r requirements.txt
+uvicorn server.app:app --host 0.0.0.0 --port 8000
 ```
 
-## Deploying to Hugging Face Spaces
-
-You can easily deploy your OpenEnv environment to Hugging Face Spaces using the `openenv push` command:
+### Run with Docker
 
 ```bash
-# From the environment directory (where openenv.yaml is located)
-openenv push
-
-# Or specify options
-openenv push --namespace my-org --private
+docker build -t smart-contract-audit-env .
+docker run -p 7860:7860 smart-contract-audit-env
 ```
 
-The `openenv push` command will:
-1. Validate that the directory is an OpenEnv environment (checks for `openenv.yaml`)
-2. Prepare a custom build for Hugging Face Docker space (enables web interface)
-3. Upload to Hugging Face (ensuring you're logged in)
-
-### Prerequisites
-
-- Authenticate with Hugging Face: The command will prompt for login if not already authenticated
-
-### Options
-
-- `--directory`, `-d`: Directory containing the OpenEnv environment (defaults to current directory)
-- `--repo-id`, `-r`: Repository ID in format 'username/repo-name' (defaults to 'username/env-name' from openenv.yaml)
-- `--base-image`, `-b`: Base Docker image to use (overrides Dockerfile FROM)
-- `--private`: Deploy the space as private (default: public)
-
-### Examples
+### Run Inference
 
 ```bash
-# Push to your personal namespace (defaults to username/env-name from openenv.yaml)
-openenv push
-
-# Push to a specific repository
-openenv push --repo-id my-org/my-env
-
-# Push with a custom base image
-openenv push --base-image ghcr.io/meta-pytorch/openenv-base:latest
-
-# Push as a private space
-openenv push --private
-
-# Combine options
-openenv push --repo-id my-org/my-env --base-image custom-base:latest --private
+export HF_TOKEN=your_token
+export API_BASE_URL=https://router.huggingface.co/novita/v3/openai
+export MODEL_NAME=mistralai/mistral-7b-instruct
+export ENV_URL=http://localhost:8000
+python inference.py
 ```
 
-After deployment, your space will be available at:
-`https://huggingface.co/spaces/<repo-id>`
+## 📊 Baseline Scores
 
-The deployed space includes:
-- **Web Interface** at `/web` - Interactive UI for exploring the environment
-- **API Documentation** at `/docs` - Full OpenAPI/Swagger interface
-- **Health Check** at `/health` - Container health monitoring
-- **WebSocket** at `/ws` - Persistent session endpoint for low-latency interactions
+| Task | Score | Model |
+|------|-------|-------|
+| easy | 0.90 | Mistral-7B-Instruct |
+| medium | 0.67 | Mistral-7B-Instruct |
+| hard | 0.50 | Mistral-7B-Instruct |
 
-## Environment Details
+## 🔧 Environment Variables
 
-### Action
-**SmartContractAuditAction**: Contains a single field
-- `message` (str) - The message to echo back
-
-### Observation
-**SmartContractAuditObservation**: Contains the echo response and metadata
-- `echoed_message` (str) - The message echoed back
-- `message_length` (int) - Length of the message
-- `reward` (float) - Reward based on message length (length × 0.1)
-- `done` (bool) - Always False for echo environment
-- `metadata` (dict) - Additional info like step count
-
-### Reward
-The reward is calculated as: `message_length × 0.1`
-- "Hi" → reward: 0.2
-- "Hello, World!" → reward: 1.3
-- Empty message → reward: 0.0
-
-## Advanced Usage
-
-### Connecting to an Existing Server
-
-If you already have a Smart Contract Audit Env environment server running, you can connect directly:
-
-```python
-from smart_contract_audit_env import SmartContractAuditEnv
-
-# Connect to existing server
-smart_contract_audit_envenv = SmartContractAuditEnv(base_url="<ENV_HTTP_URL_HERE>")
-
-# Use as normal
-result = smart_contract_audit_envenv.reset()
-result = smart_contract_audit_envenv.step(SmartContractAuditAction(message="Hello!"))
-```
-
-Note: When connecting to an existing server, `smart_contract_audit_envenv.close()` will NOT stop the server.
-
-### Using the Context Manager
-
-The client supports context manager usage for automatic connection management:
-
-```python
-from smart_contract_audit_env import SmartContractAuditAction, SmartContractAuditEnv
-
-# Connect with context manager (auto-connects and closes)
-with SmartContractAuditEnv(base_url="http://localhost:8000") as env:
-    result = env.reset()
-    print(f"Reset: {result.observation.echoed_message}")
-    # Multiple steps with low latency
-    for msg in ["Hello", "World", "!"]:
-        result = env.step(SmartContractAuditAction(message=msg))
-        print(f"Echoed: {result.observation.echoed_message}")
-```
-
-The client uses WebSocket connections for:
-- **Lower latency**: No HTTP connection overhead per request
-- **Persistent session**: Server maintains your environment state
-- **Efficient for episodes**: Better for many sequential steps
-
-### Concurrent WebSocket Sessions
-
-The server supports multiple concurrent WebSocket connections. To enable this,
-modify `server/app.py` to use factory mode:
-
-```python
-# In server/app.py - use factory mode for concurrent sessions
-app = create_app(
-    SmartContractAuditEnvironment,  # Pass class, not instance
-    SmartContractAuditAction,
-    SmartContractAuditObservation,
-    max_concurrent_envs=4,  # Allow 4 concurrent sessions
-)
-```
-
-Then multiple clients can connect simultaneously:
-
-```python
-from smart_contract_audit_env import SmartContractAuditAction, SmartContractAuditEnv
-from concurrent.futures import ThreadPoolExecutor
-
-def run_episode(client_id: int):
-    with SmartContractAuditEnv(base_url="http://localhost:8000") as env:
-        result = env.reset()
-        for i in range(10):
-            result = env.step(SmartContractAuditAction(message=f"Client {client_id}, step {i}"))
-        return client_id, result.observation.message_length
-
-# Run 4 episodes concurrently
-with ThreadPoolExecutor(max_workers=4) as executor:
-    results = list(executor.map(run_episode, range(4)))
-```
-
-## Development & Testing
-
-### Direct Environment Testing
-
-Test the environment logic directly without starting the HTTP server:
-
-```bash
-# From the server directory
-python3 server/smart_contract_audit_env_environment.py
-```
-
-This verifies that:
-- Environment resets correctly
-- Step executes actions properly
-- State tracking works
-- Rewards are calculated correctly
-
-### Running Locally
-
-Run the server locally for development:
-
-```bash
-uvicorn server.app:app --reload
-```
-
-## Project Structure
-
-```
-smart_contract_audit_env/
-├── .dockerignore         # Docker build exclusions
-├── __init__.py            # Module exports
-├── README.md              # This file
-├── openenv.yaml           # OpenEnv manifest
-├── pyproject.toml         # Project metadata and dependencies
-├── uv.lock                # Locked dependencies (generated)
-├── client.py              # SmartContractAuditEnv client
-├── models.py              # Action and Observation models
-└── server/
-    ├── __init__.py        # Server module exports
-    ├── smart_contract_audit_env_environment.py  # Core environment logic
-    ├── app.py             # FastAPI application (HTTP + WebSocket endpoints)
-    └── Dockerfile         # Container image definition
-```
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `API_BASE_URL` | `https://router.huggingface.co/novita/v3/openai` | LLM API endpoint |
+| `MODEL_NAME` | `mistralai/mistral-7b-instruct` | Model to use |
+| `HF_TOKEN` | required | HuggingFace API token |
+| `ENV_URL` | `http://localhost:8000` | Environment server URL |

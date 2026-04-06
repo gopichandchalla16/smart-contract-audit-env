@@ -7,21 +7,21 @@ import re
 import json
 import time
 from openai import OpenAI
-from dotenv import load_dotenv
 import requests
 
-load_dotenv()
+API_BASE_URL   = os.getenv("API_BASE_URL", "https://router.huggingface.co/novita/v3/openai")
+MODEL_NAME     = os.getenv("MODEL_NAME", "mistralai/mistral-7b-instruct")
+HF_TOKEN       = os.getenv("HF_TOKEN")
 
-API_BASE_URL   = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
-MODEL_NAME     = os.getenv("MODEL_NAME", "gpt-4o-mini")
-HF_TOKEN       = os.getenv("HF_TOKEN", "")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", HF_TOKEN)
-ENV_URL        = os.getenv("ENV_URL", "http://localhost:8000")
+if HF_TOKEN is None:
+    raise ValueError("HF_TOKEN environment variable is required")
+
+ENV_URL = os.getenv("ENV_URL", "http://localhost:8000")
 
 MAX_STEPS   = 5
 TEMPERATURE = 0.1
 
-client = OpenAI(api_key=OPENAI_API_KEY, base_url=API_BASE_URL)
+client = OpenAI(api_key=HF_TOKEN, base_url=API_BASE_URL)
 
 SYSTEM_PROMPT = """You are an expert Solidity smart contract security auditor.
 Analyze the contract and find ALL security vulnerabilities.
@@ -58,17 +58,12 @@ def run_task(task_id: str) -> float:
         params={"task_id": task_id}
     ).json()
 
-    print(json.dumps({
-        "type"       : "[START]",
-        "task_id"    : task_id,
-        "model"      : MODEL_NAME,
-        "max_steps"  : MAX_STEPS,
-        "description": obs.get("task_description", "")
-    }))
+    print(f"[START] task={task_id} env=smart-contract-audit model={MODEL_NAME}")
 
-    total_reward = 0.0
-    final_score  = 0.0
-    step         = 0
+    reward_list = []
+    final_score = 0.0
+    step = 0
+    last_error = "null"
 
     for step in range(1, MAX_STEPS + 1):
         try:
@@ -87,18 +82,14 @@ def run_task(task_id: str) -> float:
                 max_tokens=800,
             )
             response_text = completion.choices[0].message.content or ""
+            last_error = "null"
         except Exception as exc:
-            print(json.dumps({
-                "type"   : "[STEP]",
-                "task_id": task_id,
-                "step"   : step,
-                "error"  : str(exc),
-                "reward" : 0.0,
-                "done"   : False
-            }))
+            last_error = str(exc).replace("\n", " ")
+            print(f"[STEP] step={step} action=null reward=0.00 done=false error={last_error}")
             break
 
         action = extract_json(response_text)
+        action_str = str(action.get('findings', []))[:80].replace("\n", " ")
 
         result = requests.post(
             f"{ENV_URL}/step",
@@ -110,34 +101,20 @@ def run_task(task_id: str) -> float:
         reward_value = reward_obj.get("value", 0.0)
         cumulative   = reward_obj.get("cumulative", 0.0)
         done         = result.get("done", False)
-        total_reward += reward_value
-        final_score   = cumulative
+        reward_list.append(reward_value)
+        final_score  = cumulative
 
-        print(json.dumps({
-            "type"      : "[STEP]",
-            "task_id"   : task_id,
-            "step"      : step,
-            "action"    : action.get("findings", []),
-            "reward"    : round(reward_value, 4),
-            "cumulative": round(cumulative, 4),
-            "done"      : done,
-            "feedback"  : reward_obj.get("message", "")[:80]
-        }))
+        print(f"[STEP] step={step} action={action_str} reward={reward_value:.2f} done={str(done).lower()} error=null")
 
         if done:
             break
 
         obs = result.get("observation", obs)
-        time.sleep(0.5)
+        time.sleep(0.3)
 
-    print(json.dumps({
-        "type"        : "[END]",
-        "task_id"     : task_id,
-        "model"       : MODEL_NAME,
-        "total_reward": round(total_reward, 4),
-        "final_score" : round(final_score, 4),
-        "steps_taken" : step
-    }))
+    rewards_str = ",".join([f"{r:.2f}" for r in reward_list])
+    success = final_score >= 0.5
+    print(f"[END] success={str(success).lower()} steps={step} rewards={rewards_str}")
 
     return final_score
 
@@ -147,7 +124,7 @@ def main():
         resp = requests.get(f"{ENV_URL}/health", timeout=10)
         resp.raise_for_status()
     except Exception as e:
-        print(json.dumps({"type": "[ERROR]", "message": f"Server not reachable: {e}"}))
+        print(f"[END] success=false steps=0 rewards=")
         return
 
     scores = {}
@@ -157,13 +134,8 @@ def main():
         scores[task_id] = run_task(task_id)
 
     elapsed = time.time() - start_time
-
-    print(json.dumps({
-        "type"           : "[SUMMARY]",
-        "scores"         : scores,
-        "average"        : round(sum(scores.values()) / len(scores), 4),
-        "runtime_seconds": round(elapsed, 2)
-    }))
+    avg = sum(scores.values()) / len(scores)
+    print(f"SUMMARY scores={scores} average={avg:.4f} runtime={elapsed:.2f}s")
 
 
 if __name__ == "__main__":
