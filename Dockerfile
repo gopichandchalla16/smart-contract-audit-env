@@ -1,21 +1,17 @@
-# Smart Contract Audit Environment
-# Using ghcr.io mirror to bypass Docker Hub rate limiting on validator
-FROM ghcr.io/huggingface/text-generation-inference:sha-ff50a2d-amd64 AS base
-
-# Simpler: use official Python from alternative registry
-FROM python:3.9-slim
+FROM ghcr.io/astral-sh/uv:python3.10-bookworm-slim
 
 WORKDIR /app
 
-# Install dependencies as root first
-COPY requirements.txt requirements.txt
+# Copy and install dependencies
+COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Create non-root user for HF Spaces
+# Create non-root user
 RUN useradd -m -u 1000 user
-COPY --chown=user . /app
+COPY --chown=user:user . .
 USER user
+
 ENV HOME=/home/user \
     PATH=/home/user/.local/bin:$PATH
 
