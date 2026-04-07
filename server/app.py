@@ -5,6 +5,8 @@ import sys
 import os
 import uvicorn
 import time
+import threading
+import requests as http_requests
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -33,7 +35,6 @@ env = SmartContractAuditEnv()
 
 
 def get_env() -> SmartContractAuditEnv:
-    """Always returns a valid env, reinits if crashed."""
     global env
     if env is None:
         env = SmartContractAuditEnv()
@@ -41,13 +42,62 @@ def get_env() -> SmartContractAuditEnv:
 
 
 def reinit_env() -> SmartContractAuditEnv:
-    """Force reinitialize the global env."""
     global env
     env = SmartContractAuditEnv()
     return env
 
 
-# --- Global exception handlers ---
+# ───────────────────────────────────────────────────────────────
+# 24/7 FREE KEEP-ALIVE: self-ping background thread
+# Pings /health every 4 minutes to prevent HF Space from sleeping.
+# Uses only the internal port — 100% free, no external service needed.
+# ───────────────────────────────────────────────────────────────
+KEEP_ALIVE_INTERVAL = 240  # 4 minutes - well within HF 5-min sleep timeout
+
+def _keep_alive_worker():
+    """Background thread: pings /health every 4 minutes forever."""
+    # Wait for server to fully start before first ping
+    time.sleep(20)
+    port = int(os.getenv("PORT", 7860))
+    url  = f"http://localhost:{port}/health"
+    ping_count = 0
+    while True:
+        try:
+            resp = http_requests.get(url, timeout=10)
+            ping_count += 1
+            if ping_count % 10 == 0:  # Log every 10th ping (~40 mins)
+                uptime = round((time.time() - START_TIME) / 3600, 2)
+                print(f"[KEEP-ALIVE] ping #{ping_count} OK | uptime={uptime}h | status={resp.status_code}", flush=True)
+        except Exception as e:
+            print(f"[KEEP-ALIVE] ping failed: {e}", flush=True)
+        time.sleep(KEEP_ALIVE_INTERVAL)
+
+
+def _warmup_worker():
+    """Startup warmup: pre-runs all 3 tasks so first validator request is instant."""
+    time.sleep(5)
+    try:
+        e = get_env()
+        for task_id in ["easy", "medium", "hard"]:
+            e.reset(task_id=task_id)
+        print("[WARMUP] All 3 tasks pre-initialized and ready.", flush=True)
+    except Exception as ex:
+        print(f"[WARMUP] failed: {ex}", flush=True)
+
+
+@app.on_event("startup")
+def startup_event():
+    """Launch keep-alive + warmup threads on server start."""
+    # Keep-alive thread
+    ka_thread = threading.Thread(target=_keep_alive_worker, daemon=True, name="keep-alive")
+    ka_thread.start()
+    # Warmup thread
+    wu_thread = threading.Thread(target=_warmup_worker, daemon=True, name="warmup")
+    wu_thread.start()
+    print("[STARTUP] Keep-alive (4min interval) + warmup threads started.", flush=True)
+
+
+# ── Exception handlers ──────────────────────────────────────────────────────────
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
@@ -71,7 +121,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     )
 
 
-# --- Health ---
+# ── Health ───────────────────────────────────────────────────────────────
 @app.get("/health")
 def health():
     return {
@@ -79,11 +129,12 @@ def health():
         "environment": "smart-contract-audit-env",
         "version": "1.0.0",
         "uptime_seconds": round(time.time() - START_TIME, 1),
-        "tasks_available": VALID_TASKS
+        "tasks_available": VALID_TASKS,
+        "keep_alive": "active"
     }
 
 
-# --- Root ---
+# ── Root ───────────────────────────────────────────────────────────────
 @app.get("/")
 def root():
     return {
@@ -91,11 +142,12 @@ def root():
         "version": "1.0.0",
         "tasks": VALID_TASKS,
         "endpoints": ["/reset", "/step", "/state", "/health", "/tasks", "/docs"],
-        "usage": "POST /reset?task_id=easy to start, POST /step?task_id=easy with Action body to audit"
+        "usage": "POST /reset?task_id=easy to start, POST /step?task_id=easy with Action body to audit",
+        "keep_alive": "self-ping every 4 minutes - runs 24/7"
     }
 
 
-# --- Tasks list ---
+# ── Tasks list ────────────────────────────────────────────────────────────
 @app.get("/tasks")
 def list_tasks():
     return {
@@ -107,7 +159,7 @@ def list_tasks():
     }
 
 
-# --- Reset ---
+# ── Reset ───────────────────────────────────────────────────────────────
 @app.post("/reset")
 def reset(task_id: str = "easy"):
     if task_id not in VALID_TASKS:
@@ -120,13 +172,12 @@ def reset(task_id: str = "easy"):
         return obs.dict()
 
 
-# --- Step ---
+# ── Step ───────────────────────────────────────────────────────────────
 @app.post("/step")
 def step(action: Action, task_id: str = "easy"):
     if task_id not in VALID_TASKS:
         raise HTTPException(status_code=400, detail=f"Invalid task_id '{task_id}'. Choose from: {VALID_TASKS}")
 
-    # Input sanitization
     action.findings = (action.findings or [])[:20]
     action.severity = (action.severity or [])[:20]
     action.vulnerable_lines = (action.vulnerable_lines or [])[:20]
@@ -134,7 +185,6 @@ def step(action: Action, task_id: str = "easy"):
 
     try:
         e = get_env()
-        # Auto-reset if episode already done
         if e.states.get(task_id, {}).get("step_count", 0) >= 5:
             e.reset(task_id=task_id)
         result = e.step(action=action, task_id=task_id)
@@ -149,7 +199,7 @@ def step(action: Action, task_id: str = "easy"):
             raise HTTPException(status_code=500, detail=f"Step failed: {str(ex2)}")
 
 
-# --- State ---
+# ── State ───────────────────────────────────────────────────────────────
 @app.get("/state")
 def state(task_id: str = "easy"):
     if task_id not in VALID_TASKS:
@@ -163,14 +213,13 @@ def state(task_id: str = "easy"):
         return e.state(task_id=task_id).dict()
 
 
-# --- Legacy audit endpoint ---
+# ── Legacy ───────────────────────────────────────────────────────────────
 @app.post("/audit")
 def audit(action: Action, task_id: str = "easy"):
-    """Legacy endpoint — wraps /step for backward compatibility"""
     return step(action=action, task_id=task_id)
 
 
-# --- Entry point ---
+# ── Entry point ────────────────────────────────────────────────────────────
 def main():
     uvicorn.run(
         "server.app:app",
@@ -178,7 +227,7 @@ def main():
         port=int(os.getenv("PORT", 7860)),
         reload=False,
         workers=1,
-        timeout_keep_alive=30
+        timeout_keep_alive=75
     )
 
 
