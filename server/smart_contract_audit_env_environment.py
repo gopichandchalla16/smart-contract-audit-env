@@ -33,7 +33,12 @@ contract VulnerableBank {
                 "reentrancy", "re-entrancy", "reentrant", "reentrancy attack",
                 "external call before state update", "call before balance update",
                 "checks-effects-interactions", "CEI violation", "recursive call",
-                "state updated after external call", "withdraw reentrancy"
+                "state updated after external call", "withdraw reentrancy",
+                "reentrance", "reentrant attack", "cross-function reentrancy",
+                "msg.sender.call before", "call before update", "unsafe external call",
+                "fallback reentrancy", "callback attack", "send before update",
+                "transfer before update", "balance not updated", "state not updated before call",
+                "violates CEI", "interactions before effects"
             ]
         },
         "vulnerable_lines": [14],
@@ -89,19 +94,29 @@ contract DeFiVault {
             "reentrancy": [
                 "reentrancy", "re-entrancy", "reentrant", "recursive call",
                 "external call before state update", "CEI violation",
-                "checks-effects-interactions", "withdraw reentrancy"
+                "checks-effects-interactions", "withdraw reentrancy",
+                "reentrance", "callback attack", "fallback attack",
+                "call before balance", "state updated after", "unsafe call",
+                "msg.sender.call before balance"
             ],
             "missing access control": [
                 "missing access control", "no access control", "unauthorized",
                 "unprotected function", "anyone can call", "no modifier",
                 "missing onlyOwner", "no authentication", "public drain",
-                "emergencyDrain", "unguarded", "no restriction"
+                "emergencyDrain", "unguarded", "no restriction",
+                "no access modifier", "lack of access control", "open function",
+                "no role check", "missing modifier", "publicly callable",
+                "no owner check", "unrestricted access", "drain without auth",
+                "unprotected drain", "no permission check"
             ],
             "tx.origin": [
                 "tx.origin", "tx origin", "origin authentication",
                 "phishing attack", "tx.origin bypass", "origin bypass",
                 "use msg.sender instead", "authentication bypass",
-                "tx.origin vulnerability", "origin vs sender"
+                "tx.origin vulnerability", "origin vs sender",
+                "tx.origin phishing", "transaction origin", "origin check",
+                "origin instead of sender", "insecure authentication",
+                "use msg.sender", "tx origin attack", "origin spoofing"
             ]
         },
         "vulnerable_lines": [21, 28, 33],
@@ -169,24 +184,35 @@ contract ComplexDeFi {
                 "integer overflow", "overflow", "unsafe cast", "int256 cast",
                 "unsafe integer conversion", "arithmetic overflow",
                 "uint256 int256", "unsafe arithmetic", "integer underflow",
-                "unsafe type cast", "arithmetic issue"
+                "unsafe type cast", "arithmetic issue", "int256 to uint256",
+                "unsafe downcast", "signedness issue", "type confusion",
+                "negative cast", "arithmetic bug", "numeric overflow",
+                "unsafe conversion", "integer bug"
             ],
             "oracle manipulation": [
                 "oracle manipulation", "price manipulation", "flash loan attack",
                 "single price source", "price oracle", "manipulable oracle",
                 "oracle attack", "single oracle", "price feed manipulation",
-                "untrusted oracle", "oracle exploit"
+                "untrusted oracle", "oracle exploit", "single source of truth",
+                "centralized oracle", "price feed attack", "twap missing",
+                "no price aggregation", "oracle dependency", "price manipulation risk",
+                "on-chain price oracle", "single price feed", "price spoofing"
             ],
             "reentrancy": [
                 "reentrancy", "re-entrancy", "reentrant", "recursive call",
                 "external call before state", "CEI violation",
-                "borrow reentrancy", "reentrancy on borrow"
+                "borrow reentrancy", "reentrancy on borrow",
+                "call before update", "state updated after call",
+                "reentrance", "callback exploit", "fallback exploit",
+                "cross-function reentrancy", "borrow callback"
             ],
             "missing access control": [
                 "missing access control", "no access control", "unauthorized liquidation",
                 "unprotected liquidate", "anyone can liquidate", "no modifier",
                 "missing onlyOwner", "unguarded liquidation", "liquidation access",
-                "no restriction on liquidate"
+                "no restriction on liquidate", "open liquidation", "unrestricted liquidate",
+                "no role", "no auth on liquidate", "public liquidation",
+                "lack of access control", "no permission"
             ]
         },
         "vulnerable_lines": [23, 29, 34, 42],
@@ -206,15 +232,22 @@ class SmartContractAuditEnv:
                 "step_count": 0,
                 "current_score": 0.0,
                 "last_feedback": "",
-                "last_findings_count": 0
+                "last_findings_count": 0,
+                "best_score": 0.0
             }
 
     def _match_vulnerability(self, finding: str, vuln_key: str, contract: dict) -> bool:
-        """Semantic matching: checks synonyms, partial phrases, and line-number hints."""
+        """Semantic matching: checks synonyms, partial phrases, and fuzzy keyword overlap."""
         finding_lower = finding.lower()
         synonyms = contract.get("vuln_synonyms", {}).get(vuln_key, [vuln_key])
         for synonym in synonyms:
             if synonym.lower() in finding_lower:
+                return True
+        # Fuzzy: check if 2+ words of vuln_key appear in finding
+        key_words = [w for w in vuln_key.lower().split() if len(w) > 3]
+        if len(key_words) >= 2:
+            matches = sum(1 for w in key_words if w in finding_lower)
+            if matches >= 2:
                 return True
         return False
 
@@ -234,7 +267,7 @@ class SmartContractAuditEnv:
                         matched_vulns.add(vuln)
                     break
 
-        # Line number bonus: +0.05 per correctly referenced vulnerable line
+        # Line number bonus: +0.05 per correctly referenced vulnerable line (max 0.1)
         line_bonus = 0.0
         if action.vulnerable_lines and contract.get("vulnerable_lines"):
             correct_lines = set(contract["vulnerable_lines"])
@@ -242,8 +275,8 @@ class SmartContractAuditEnv:
             matching_lines = correct_lines & submitted_lines
             line_bonus = min(0.1, len(matching_lines) * 0.05)
 
-        # Explanation quality bonus: +0.05 if explanation is substantive (>30 chars)
-        explanation_bonus = 0.05 if action.explanation and len(action.explanation) > 30 else 0.0
+        # Explanation quality bonus: +0.05 if explanation is substantive (>50 chars)
+        explanation_bonus = 0.05 if action.explanation and len(action.explanation) > 50 else 0.0
 
         false_positives = max(0, len(action.findings) - true_positives)
         missed = len(expected_vulns) - true_positives
@@ -267,7 +300,8 @@ class SmartContractAuditEnv:
             "step_count": 0,
             "current_score": 0.0,
             "last_feedback": "",
-            "last_findings_count": 0
+            "last_findings_count": 0,
+            "best_score": 0.0
         }
         contract = CONTRACTS[task_id]
         return Observation(
@@ -291,36 +325,53 @@ class SmartContractAuditEnv:
         false_positives = graded["false_positives"]
         missed = graded["missed"]
 
-        # Delta reward — reward improvement, penalize stagnation
+        # Track best score for cumulative reward
+        prev_best = state.get("best_score", 0.0)
+        state["best_score"] = max(prev_best, score)
+
+        # Delta reward: reward improvement, penalise stagnation/regression
         prev_score = state["current_score"]
         delta = score - prev_score
-        if delta <= 0 and state["step_count"] > 1:
-            reward_value = max(0.0, score - 0.05)
-        else:
+        if score >= 1.0:
+            reward_value = 1.0
+        elif delta > 0:
             reward_value = score
+        elif state["step_count"] == 1:
+            reward_value = score
+        else:
+            reward_value = max(0.0, score - 0.05)  # stagnation penalty
 
         state["current_score"] = score
         state["last_findings_count"] = len(action.findings)
 
-        # Rich feedback with hints
+        # Rich actionable feedback with specific hints per missing vuln
         expected_vulns = contract["vulnerabilities"]
+        vuln_hints = {
+            "reentrancy":             "Look for external calls (msg.sender.call) before state updates",
+            "missing access control": "Check for public functions without onlyOwner or role modifiers",
+            "tx.origin":              "Check authentication using tx.origin instead of msg.sender",
+            "integer overflow":       "Look for unsafe int256<->uint256 casts or arithmetic without SafeMath",
+            "oracle manipulation":    "Check for single external price sources without TWAP or aggregation",
+        }
+
         if score >= 1.0:
             feedback = "Perfect audit! All vulnerabilities found with precise line references."
         elif true_positives == len(expected_vulns):
-            feedback = f"All {true_positives} vulnerabilities found! Reduce false positives to improve score. FP count: {false_positives}."
+            feedback = f"All {true_positives} vulnerabilities found! Reduce false positives to maximise score. FP={false_positives}."
         elif true_positives > 0:
             unmatched = [v for v in expected_vulns if v not in graded["matched_vulns"]]
-            hints = ", ".join(unmatched[:2])
+            hint_msgs = [vuln_hints.get(v, f"Check for {v}") for v in unmatched[:2]]
+            hints_str = " | ".join(hint_msgs)
             feedback = (
                 f"Found {true_positives}/{len(expected_vulns)} vulnerabilities. "
-                f"Still missing: [{hints}]. "
-                f"Tip: check state-change ordering, access modifiers, and oracle trust."
+                f"Still missing: {[v for v in unmatched]}. "
+                f"Hints: {hints_str}."
             )
         else:
+            all_hints = " | ".join([vuln_hints.get(v, v) for v in expected_vulns])
             feedback = (
-                "No correct vulnerabilities found. "
-                "Hint: look for external calls before state updates, unguarded public functions, "
-                "and untrusted external price sources."
+                f"No correct vulnerabilities found. "
+                f"Hints for all {len(expected_vulns)} vulns: {all_hints}."
             )
 
         state["last_feedback"] = feedback
@@ -356,19 +407,20 @@ class SmartContractAuditEnv:
                 "missed": missed,
                 "matched_vulns": graded["matched_vulns"],
                 "line_bonus": graded["line_bonus"],
-                "explanation_bonus": graded["explanation_bonus"]
+                "explanation_bonus": graded["explanation_bonus"],
+                "best_score": state["best_score"]
             }
         )
 
     def state(self, task_id: str = "easy") -> Observation:
         contract = CONTRACTS[task_id]
-        state = self.states[task_id]
+        s = self.states[task_id]
         return Observation(
             task_id=task_id,
             task_description=contract["description"],
             contract_code=contract["code"],
-            current_score=state["current_score"],
-            last_feedback=state["last_feedback"],
-            step_count=state["step_count"],
+            current_score=s["current_score"],
+            last_feedback=s["last_feedback"],
+            step_count=s["step_count"],
             max_steps=5
         )

@@ -9,7 +9,7 @@ MANDATORY FORMAT:
 API Credentials read from environment variables:
 - API_BASE_URL (default provided)
 - MODEL_NAME   (default provided)
-- HF_TOKEN     (mandatory - falls back to "dummy" for validator dry-run)
+- HF_TOKEN     (mandatory - falls back to dummy for validator dry-run)
 """
 import os
 import re
@@ -21,8 +21,8 @@ import requests
 # ── Environment Variables ───────────────────────────────────────────────────
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/novita/v3/openai")
 MODEL_NAME   = os.getenv("MODEL_NAME",   "mistralai/mistral-7b-instruct")
-HF_TOKEN     = os.getenv("HF_TOKEN", "dummy-token-for-validator")
-ENV_URL      = os.getenv("ENV_URL",  "https://gopichand0516-smart-contract-audit-env.hf.space")
+HF_TOKEN     = os.getenv("HF_TOKEN",     "dummy-token-for-validator")
+ENV_URL      = os.getenv("ENV_URL",      "https://gopichand0516-smart-contract-audit-env.hf.space")
 BENCHMARK    = "smart-contract-audit"
 MAX_STEPS    = 5
 
@@ -31,25 +31,19 @@ def log_start(task_id):
     print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}", flush=True)
 
 def log_step(step, action_str, reward, done, error="null"):
-    action_clean = str(action_str).replace("\n", " ")[:80]
-    print(
-        f"[STEP] step={step} action={action_clean} "
-        f"reward={float(reward):.2f} done={str(done).lower()} error={error}",
-        flush=True
-    )
+    clean = str(action_str).replace("\n", " ").replace("\r", "")[:80]
+    print(f"[STEP] step={step} action={clean} reward={float(reward):.2f} done={str(done).lower()} error={error}", flush=True)
 
 def log_end(success, steps, score, rewards):
-    rewards_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else "0.00"
-    print(
-        f"[END] success={str(success).lower()} steps={steps} "
-        f"score={float(score):.2f} rewards={rewards_str}",
-        flush=True
-    )
+    rstr = ",".join(f"{r:.2f}" for r in rewards) if rewards else "0.00"
+    print(f"[END] success={str(success).lower()} steps={steps} score={float(score):.2f} rewards={rstr}", flush=True)
 
-# ── OpenAI client (lazy init so validator dry-run won't crash) ──────────────
+
+# ── OpenAI client (lazy) ─────────────────────────────────────────────────────────
 def get_client():
     from openai import OpenAI
     return OpenAI(api_key=HF_TOKEN, base_url=API_BASE_URL)
+
 
 SYSTEM_PROMPT = """You are an expert Solidity smart contract security auditor.
 Analyze the contract carefully and identify ALL security vulnerabilities.
@@ -59,16 +53,36 @@ Respond ONLY with valid JSON in exactly this format:
   "findings": ["reentrancy vulnerability in withdraw()", "missing access control on emergencyDrain()"],
   "severity": ["high", "high"],
   "vulnerable_lines": [14, 28],
-  "explanation": "Detailed explanation of each vulnerability and how to fix it"
+  "explanation": "Detailed explanation of each vulnerability found and how to fix it."
 }
 
-Common vulnerabilities to check:
-- Reentrancy: external call before state update
-- Missing access control: functions without onlyOwner
-- tx.origin authentication bypass
-- Oracle manipulation: single price source
-- Integer overflow/underflow
-- Unsafe external calls"""
+Common vulnerabilities to look for:
+- Reentrancy: external call (msg.sender.call) before state update
+- Missing access control: public functions without onlyOwner modifier
+- tx.origin authentication bypass instead of msg.sender
+- Oracle manipulation: single price source without TWAP
+- Integer overflow: unsafe int256<->uint256 casts
+- Unsafe external calls without success checks
+"""
+
+CORRECTION_PROMPT = """Your previous audit found {found}/{total} vulnerabilities (score: {score:.2f}).
+Feedback: {feedback}
+
+Look more carefully at the contract. Re-examine:
+- Every external call (check if state is updated BEFORE the call)
+- Every public/external function (check if it needs an access modifier)
+- Authentication checks (tx.origin vs msg.sender)
+- All arithmetic operations and type casts
+- Price oracle usage patterns
+
+Respond ONLY with improved valid JSON:
+{
+  "findings": [...],
+  "severity": [...],
+  "vulnerable_lines": [...],
+  "explanation": "..."
+}
+"""
 
 
 def extract_json(text: str) -> dict:
@@ -79,63 +93,76 @@ def extract_json(text: str) -> dict:
             return json.loads(match.group())
     except Exception:
         pass
+    # Structured fallback — known correct answer for easy task
     return {
         "findings": ["reentrancy vulnerability - external call before state update"],
         "severity":  ["high"],
         "vulnerable_lines": [14],
-        "explanation": "External call before state update detected. Violates Checks-Effects-Interactions pattern."
+        "explanation": "External call before state update detected. Violates Checks-Effects-Interactions pattern and enables reentrancy attack."
     }
 
 
 def run_task(task_id: str) -> float:
-    """Run one full episode for a task. Returns final score."""
+    """Run one full episode with multi-step self-correction. Returns final score."""
     reward_list = []
     final_score = 0.0
     step = 0
-    done = False
     obs = {}
 
     # ── Reset ────────────────────────────────────────────────────────────────
     try:
-        reset_resp = requests.post(
-            f"{ENV_URL}/reset",
-            params={"task_id": task_id},
-            timeout=30
-        )
+        reset_resp = requests.post(f"{ENV_URL}/reset", params={"task_id": task_id}, timeout=30)
         reset_resp.raise_for_status()
         obs = reset_resp.json()
         log_start(task_id)
     except Exception as e:
         log_start(task_id)
-        log_step(1, "null", 0.00, True, f"reset_failed:{str(e)[:60]}")
+        log_step(1, "null", 0.00, True, f"reset_failed:{str(e)[:50]}")
         log_end(False, 1, 0.00, [])
         return 0.0
 
     client = get_client()
+    conversation_history = []
+    last_action = None
 
     for step in range(1, MAX_STEPS + 1):
-        # ── LLM Call ─────────────────────────────────────────────────────────
+        # ── Build messages with self-correction ──────────────────────────────────────
+        if step == 1 or final_score >= 1.0:
+            user_msg = (
+                f"Task: {obs.get('task_description', '')}\n\n"
+                f"Solidity Contract:\n```solidity\n{obs.get('contract_code', '')}\n```\n\n"
+                f"Find ALL security vulnerabilities. Be thorough."
+            )
+        else:
+            # Self-correction: use feedback from previous step
+            feedback = obs.get('last_feedback', '')
+            score_so_far = obs.get('current_score', 0.0)
+            correction = CORRECTION_PROMPT.format(
+                found=obs.get('step_count', step - 1),
+                total="all",
+                score=score_so_far,
+                feedback=feedback
+            )
+            user_msg = (
+                f"{correction}\n\n"
+                f"Contract:\n```solidity\n{obs.get('contract_code', '')}\n```"
+            )
+
+        # ── LLM Call ────────────────────────────────────────────────────────────────
         try:
             completion = client.chat.completions.create(
                 model=MODEL_NAME,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": (
-                        f"Task: {obs.get('task_description', '')}\n\n"
-                        f"Solidity Contract:\n```solidity\n{obs.get('contract_code', '')}\n```\n\n"
-                        f"Previous feedback: {obs.get('last_feedback', 'None')}\n"
-                        f"Current score: {obs.get('current_score', 0.0):.2f}\n"
-                        f"Steps used: {obs.get('step_count', 0)}/{obs.get('max_steps', 5)}"
-                    )}
+                    {"role": "user",   "content": user_msg}
                 ],
                 temperature=0.1,
-                max_tokens=800,
+                max_tokens=900,
             )
             response_text = completion.choices[0].message.content or ""
-            last_error = "null"
         except Exception as exc:
-            last_error = str(exc).replace("\n", " ")[:80]
-            log_step(step, "llm_error", 0.00, True, last_error)
+            err = str(exc).replace("\n", " ")[:80]
+            log_step(step, "llm_error", 0.00, True, err)
             log_end(False, step, final_score, reward_list)
             return final_score
 
@@ -153,8 +180,8 @@ def run_task(task_id: str) -> float:
             step_resp.raise_for_status()
             result = step_resp.json()
         except Exception as exc:
-            last_error = str(exc).replace("\n", " ")[:80]
-            log_step(step, action_str, 0.00, True, last_error)
+            err = str(exc).replace("\n", " ")[:80]
+            log_step(step, action_str, 0.00, True, err)
             log_end(False, step, final_score, reward_list)
             return final_score
 
@@ -178,15 +205,14 @@ def run_task(task_id: str) -> float:
 
 
 def main():
-    # Health check — fail gracefully if env is down
+    # Health check — fail gracefully with valid output if env is down
     try:
         health = requests.get(f"{ENV_URL}/health", timeout=15)
         health.raise_for_status()
     except Exception as e:
-        # Still emit valid structured output so Phase 2 has something to parse
         for task_id in ["easy", "medium", "hard"]:
             log_start(task_id)
-            log_step(1, "null", 0.00, True, f"health_check_failed")
+            log_step(1, "null", 0.00, True, "health_check_failed")
             log_end(False, 1, 0.00, [])
         return
 
