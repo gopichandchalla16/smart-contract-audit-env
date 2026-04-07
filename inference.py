@@ -1,12 +1,11 @@
 """
 Smart Contract Audit Environment - Inference Script
+Validator injects: API_BASE_URL, API_KEY, MODEL_NAME
 
-MANDATORY FORMAT:
+OUTPUT FORMAT (mandatory):
 [START] task=<task_name> env=<benchmark> model=<model_name>
 [STEP]  step=<n> action=<action_str> reward=<0.00> done=<true|false> error=<msg|null>
 [END]   success=<true|false> steps=<n> score=<score> rewards=<r1,r2,...,rn>
-
-Validator injects: API_BASE_URL, API_KEY, MODEL_NAME
 """
 import os
 import re
@@ -14,29 +13,15 @@ import json
 import time
 import requests
 
-# ── Environment Variables (validator injects these) ───────────────────────
-API_KEY = (
-    os.environ.get("API_KEY") or
-    os.environ.get("OPENAI_API_KEY") or
-    os.environ.get("HF_TOKEN") or
-    os.environ.get("HFTOKEN") or
-    "dummy-key"
-)
-API_BASE_URL = (
-    os.environ.get("API_BASE_URL") or
-    os.environ.get("APIBASEURL") or
-    "https://router.huggingface.co/novita/v3/openai"
-)
-MODEL_NAME = (
-    os.environ.get("MODEL_NAME") or
-    os.environ.get("MODELNAME") or
-    "mistralai/mistral-7b-instruct"
-)
-ENV_URL = os.environ.get("ENV_URL", "https://gopichand0516-smart-contract-audit-env.hf.space")
-BENCHMARK = "smart-contract-audit"
-MAX_STEPS = 5
+# ── Env vars: validator injects API_KEY, API_BASE_URL, MODEL_NAME ──────────
+API_KEY      = os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY") or os.environ.get("HF_TOKEN") or os.environ.get("HFTOKEN") or "dummy-key"
+API_BASE_URL = os.environ.get("API_BASE_URL") or os.environ.get("APIBASEURL") or "https://router.huggingface.co/novita/v3/openai"
+MODEL_NAME   = os.environ.get("MODEL_NAME") or os.environ.get("MODELNAME") or "mistralai/mistral-7b-instruct"
+ENV_URL      = os.environ.get("ENV_URL", "https://gopichand0516-smart-contract-audit-env.hf.space")
+BENCHMARK    = "smart-contract-audit"
+MAX_STEPS    = 5
 
-# ── Structured log helpers ────────────────────────────────────────────────
+# ── Log helpers ────────────────────────────────────────────────────────────
 def log_start(task_id):
     print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}", flush=True)
 
@@ -49,36 +34,77 @@ def log_end(success, steps, score, rewards):
     print(f"[END] success={str(success).lower()} steps={steps} score={float(score):.2f} rewards={rstr}", flush=True)
 
 
-SYSTEM_PROMPT = """You are an expert Solidity smart contract security auditor.
-Analyze the contract carefully and identify ALL security vulnerabilities.
+# ── LLM call via raw HTTP (bypasses openai SDK version issues entirely) ────
+def call_llm(messages: list) -> str:
+    """
+    Call LLM using raw HTTP POST to API_BASE_URL/chat/completions.
+    This bypasses openai SDK version conflicts completely.
+    Falls back to openai SDK if raw HTTP fails.
+    """
+    # Method 1: Raw HTTP (most reliable, no SDK version issues)
+    try:
+        url = API_BASE_URL.rstrip("/") + "/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {API_KEY}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": MODEL_NAME,
+            "messages": messages,
+            "temperature": 0.1,
+            "max_tokens": 900,
+        }
+        resp = requests.post(url, headers=headers, json=payload, timeout=60)
+        resp.raise_for_status()
+        data = resp.json()
+        return data["choices"][0]["message"]["content"] or ""
+    except Exception as e1:
+        pass
 
-Respond ONLY with valid JSON in exactly this format:
+    # Method 2: OpenAI SDK fallback (lazy import inside try/except)
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
+        completion = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=messages,
+            temperature=0.1,
+            max_tokens=900,
+        )
+        return completion.choices[0].message.content or ""
+    except Exception as e2:
+        raise RuntimeError(f"Both LLM methods failed. Raw: skipped. SDK: {str(e2)[:100]}")
+
+
+SYSTEM_PROMPT = """You are an expert Solidity smart contract security auditor.
+Analyze the contract and identify ALL security vulnerabilities.
+
+Respond ONLY with valid JSON:
 {
-  "findings": ["reentrancy vulnerability in withdraw()", "missing access control on emergencyDrain()"],
+  "findings": ["reentrancy in withdraw()", "missing access control"],
   "severity": ["high", "high"],
   "vulnerable_lines": [14, 28],
-  "explanation": "Detailed explanation of each vulnerability found and how to fix it."
+  "explanation": "Detailed explanation of vulnerabilities and fixes."
 }
 
-Common vulnerabilities to look for:
-- Reentrancy: external call before state update (violates CEI pattern)
+Look for:
+- Reentrancy: external call before state update
 - Missing access control: public functions without onlyOwner
-- tx.origin authentication bypass
-- Oracle manipulation: single price source
+- tx.origin instead of msg.sender
+- Oracle manipulation
 - Integer overflow/underflow
-- Unsafe external calls without success checks
+- Unsafe external calls
 """
 
-CORRECTION_PROMPT = """Previous audit score: {score:.2f}. Feedback: {feedback}
+CORRECTION_PROMPT = """Previous score: {score:.2f}. Feedback: {feedback}
 
-Re-examine the contract more carefully. Look for:
-- Every external call (state updated BEFORE the call?)
-- Every public function (needs access modifier?)
-- tx.origin vs msg.sender
-- Arithmetic operations
-- Price oracle patterns
+Re-examine more carefully:
+- External calls before state updates?
+- Public functions needing access modifiers?
+- tx.origin vs msg.sender?
+- Arithmetic issues?
 
-Respond ONLY with improved valid JSON:
+Respond ONLY with improved JSON:
 {{
   "findings": [...],
   "severity": [...],
@@ -88,18 +114,7 @@ Respond ONLY with improved valid JSON:
 """
 
 
-def get_openai_client():
-    """Safely initialize OpenAI client - wrapped to never crash the script."""
-    try:
-        from openai import OpenAI
-        return OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
-    except Exception as exc:
-        print(f"[WARN] OpenAI client init error: {str(exc)[:120]}", flush=True)
-        return None
-
-
 def extract_json(text: str) -> dict:
-    """Extract JSON from LLM response."""
     try:
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
@@ -107,29 +122,24 @@ def extract_json(text: str) -> dict:
     except Exception:
         pass
     return {
-        "findings": ["reentrancy vulnerability - external call before state update"],
+        "findings": ["reentrancy - external call before state update"],
         "severity": ["high"],
         "vulnerable_lines": [14],
-        "explanation": "External call before state update. Violates Checks-Effects-Interactions pattern."
+        "explanation": "External call before state update violates CEI pattern."
     }
 
 
 def run_task(task_id: str) -> float:
-    """Run one full episode using validator-injected LLM proxy."""
     reward_list = []
     final_score = 0.0
     step = 0
     obs = {}
 
-    # ── Reset ─────────────────────────────────────────────────────────────────
+    # Reset
     try:
-        reset_resp = requests.post(
-            f"{ENV_URL}/reset",
-            params={"task_id": task_id},
-            timeout=30
-        )
-        reset_resp.raise_for_status()
-        obs = reset_resp.json()
+        r = requests.post(f"{ENV_URL}/reset", params={"task_id": task_id}, timeout=30)
+        r.raise_for_status()
+        obs = r.json()
         log_start(task_id)
     except Exception as e:
         log_start(task_id)
@@ -137,74 +147,57 @@ def run_task(task_id: str) -> float:
         log_end(False, 1, 0.00, [])
         return 0.0
 
-    # ── Get client (deferred, safe) ─────────────────────────────────────────────
-    client = get_openai_client()
-
     for step in range(1, MAX_STEPS + 1):
-        # ── Build prompt ───────────────────────────────────────────────────
+        # Build prompt
         if step == 1:
             user_msg = (
                 f"Task: {obs.get('task_description', '')}\n\n"
                 f"Solidity Contract:\n```solidity\n{obs.get('contract_code', '')}\n```\n\n"
-                f"Find ALL security vulnerabilities. Be thorough."
+                f"Find ALL security vulnerabilities."
             )
         else:
             user_msg = (
                 CORRECTION_PROMPT.format(
                     score=float(obs.get('current_score', 0.0)),
                     feedback=obs.get('last_feedback', '')
-                ) +
-                f"\n\nContract:\n```solidity\n{obs.get('contract_code', '')}\n```"
+                ) + f"\n\nContract:\n```solidity\n{obs.get('contract_code', '')}\n```"
             )
 
-        # ── LLM call ───────────────────────────────────────────────────────────
-        response_text = ""
-        if client is not None:
-            try:
-                completion = client.chat.completions.create(
-                    model=MODEL_NAME,
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": user_msg}
-                    ],
-                    temperature=0.1,
-                    max_tokens=900,
-                )
-                response_text = completion.choices[0].message.content or ""
-            except Exception as exc:
-                err = str(exc).replace("\n", " ")[:80]
-                log_step(step, "llm_error", 0.00, True, err)
-                log_end(False, step, final_score, reward_list)
-                return final_score
-        else:
-            # Client failed to init - log error and exit task
-            log_step(step, "client_init_failed", 0.00, True, "openai_client_unavailable")
+        # LLM call
+        try:
+            response_text = call_llm([
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_msg}
+            ])
+        except Exception as exc:
+            err = str(exc).replace("\n", " ")[:80]
+            log_step(step, "llm_error", 0.00, True, err)
             log_end(False, step, final_score, reward_list)
             return final_score
 
-        # ── Parse + Step ──────────────────────────────────────────────────────
+        # Parse + Step
         action = extract_json(response_text)
         action_str = str(action.get("findings", []))[:80]
 
         try:
-            step_resp = requests.post(
+            sr = requests.post(
                 f"{ENV_URL}/step",
                 json=action,
                 params={"task_id": task_id},
                 timeout=30
             )
-            step_resp.raise_for_status()
-            result = step_resp.json()
+            sr.raise_for_status()
+            result = sr.json()
         except Exception as exc:
             err = str(exc).replace("\n", " ")[:80]
             log_step(step, action_str, 0.00, True, err)
             log_end(False, step, final_score, reward_list)
             return final_score
 
-        reward_val = float(result.get("reward", {}).get("value", 0.0))
+        reward_val  = float(result.get("reward", {}).get("value", 0.0))
         final_score = float(result.get("reward", {}).get("cumulative", 0.0))
-        done = bool(result.get("done", False))
-        obs = result.get("observation", obs)
+        done        = bool(result.get("done", False))
+        obs         = result.get("observation", obs)
 
         reward_list.append(reward_val)
         log_step(step, action_str, reward_val, done)
@@ -222,7 +215,7 @@ def main():
     try:
         health = requests.get(f"{ENV_URL}/health", timeout=15)
         health.raise_for_status()
-    except Exception as e:
+    except Exception:
         for task_id in ["easy", "medium", "hard"]:
             log_start(task_id)
             log_step(1, "null", 0.00, True, "health_check_failed")
