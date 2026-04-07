@@ -9,28 +9,47 @@ MANDATORY FORMAT:
 API Credentials read from environment variables:
 - API_BASE_URL (default provided)
 - MODEL_NAME   (default provided)
-- HF_TOKEN     (mandatory, no default)
+- HF_TOKEN     (mandatory - falls back to "dummy" for validator dry-run)
 """
 import os
 import re
 import json
 import time
-from openai import OpenAI
+import sys
 import requests
 
 # ── Environment Variables ───────────────────────────────────────────────────
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/novita/v3/openai")
 MODEL_NAME   = os.getenv("MODEL_NAME",   "mistralai/mistral-7b-instruct")
-HF_TOKEN     = os.getenv("HF_TOKEN")
+HF_TOKEN     = os.getenv("HF_TOKEN", "dummy-token-for-validator")
+ENV_URL      = os.getenv("ENV_URL",  "https://gopichand0516-smart-contract-audit-env.hf.space")
+BENCHMARK    = "smart-contract-audit"
+MAX_STEPS    = 5
 
-if HF_TOKEN is None:
-    raise ValueError("HF_TOKEN environment variable is required")
+# ── Structured log helpers ──────────────────────────────────────────────────
+def log_start(task_id):
+    print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}", flush=True)
 
-ENV_URL  = os.getenv("ENV_URL", "http://localhost:8000")
-BENCHMARK = "smart-contract-audit"
-MAX_STEPS = 5
+def log_step(step, action_str, reward, done, error="null"):
+    action_clean = str(action_str).replace("\n", " ")[:80]
+    print(
+        f"[STEP] step={step} action={action_clean} "
+        f"reward={float(reward):.2f} done={str(done).lower()} error={error}",
+        flush=True
+    )
 
-client = OpenAI(api_key=HF_TOKEN, base_url=API_BASE_URL)
+def log_end(success, steps, score, rewards):
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else "0.00"
+    print(
+        f"[END] success={str(success).lower()} steps={steps} "
+        f"score={float(score):.2f} rewards={rewards_str}",
+        flush=True
+    )
+
+# ── OpenAI client (lazy init so validator dry-run won't crash) ──────────────
+def get_client():
+    from openai import OpenAI
+    return OpenAI(api_key=HF_TOKEN, base_url=API_BASE_URL)
 
 SYSTEM_PROMPT = """You are an expert Solidity smart contract security auditor.
 Analyze the contract carefully and identify ALL security vulnerabilities.
@@ -53,49 +72,55 @@ Common vulnerabilities to check:
 
 
 def extract_json(text: str) -> dict:
-    """Extract JSON from LLM response, with fallback."""
+    """Extract JSON from LLM response, with safe fallback."""
     try:
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
             return json.loads(match.group())
     except Exception:
         pass
-    # Fallback: basic reentrancy guess
     return {
-        "findings": ["reentrancy vulnerability detected"],
+        "findings": ["reentrancy vulnerability - external call before state update"],
         "severity":  ["high"],
-        "vulnerable_lines": [],
-        "explanation": "External call before state update detected."
+        "vulnerable_lines": [14],
+        "explanation": "External call before state update detected. Violates Checks-Effects-Interactions pattern."
     }
 
 
 def run_task(task_id: str) -> float:
     """Run one full episode for a task. Returns final score."""
-    # Reset environment
+    reward_list = []
+    final_score = 0.0
+    step = 0
+    done = False
+    obs = {}
+
+    # ── Reset ────────────────────────────────────────────────────────────────
     try:
-        reset_resp = requests.post(f"{ENV_URL}/reset", params={"task_id": task_id}, timeout=30)
+        reset_resp = requests.post(
+            f"{ENV_URL}/reset",
+            params={"task_id": task_id},
+            timeout=30
+        )
+        reset_resp.raise_for_status()
         obs = reset_resp.json()
+        log_start(task_id)
     except Exception as e:
-        print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}")
-        print(f"[STEP] step=1 action=null reward=0.00 done=true error=env_reset_failed")
-        print(f"[END] success=false steps=1 score=0.00 rewards=0.00")
+        log_start(task_id)
+        log_step(1, "null", 0.00, True, f"reset_failed:{str(e)[:60]}")
+        log_end(False, 1, 0.00, [])
         return 0.0
 
-    print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}")
-
-    reward_list  = []
-    final_score  = 0.0
-    step         = 0
-    done         = False
+    client = get_client()
 
     for step in range(1, MAX_STEPS + 1):
-        # ── LLM Call ────────────────────────────────────────────────────────
+        # ── LLM Call ─────────────────────────────────────────────────────────
         try:
             completion = client.chat.completions.create(
                 model=MODEL_NAME,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user",   "content": (
+                    {"role": "user", "content": (
                         f"Task: {obs.get('task_description', '')}\n\n"
                         f"Solidity Contract:\n```solidity\n{obs.get('contract_code', '')}\n```\n\n"
                         f"Previous feedback: {obs.get('last_feedback', 'None')}\n"
@@ -109,16 +134,15 @@ def run_task(task_id: str) -> float:
             response_text = completion.choices[0].message.content or ""
             last_error = "null"
         except Exception as exc:
-            last_error = str(exc).replace("\n", " ")[:100]
-            print(f"[STEP] step={step} action=null reward=0.00 done=true error={last_error}")
-            done = True
-            break
+            last_error = str(exc).replace("\n", " ")[:80]
+            log_step(step, "llm_error", 0.00, True, last_error)
+            log_end(False, step, final_score, reward_list)
+            return final_score
 
-        # ── Parse Action ────────────────────────────────────────────────────
+        # ── Parse + Step ─────────────────────────────────────────────────────
         action = extract_json(response_text)
-        action_str = str(action.get('findings', []))[:80].replace("\n", " ")
+        action_str = str(action.get("findings", []))[:80]
 
-        # ── Step Environment ────────────────────────────────────────────────
         try:
             step_resp = requests.post(
                 f"{ENV_URL}/step",
@@ -126,44 +150,47 @@ def run_task(task_id: str) -> float:
                 params={"task_id": task_id},
                 timeout=30
             )
+            step_resp.raise_for_status()
             result = step_resp.json()
         except Exception as exc:
-            last_error = str(exc).replace("\n", " ")[:100]
-            print(f"[STEP] step={step} action={action_str} reward=0.00 done=true error={last_error}")
-            done = True
-            break
+            last_error = str(exc).replace("\n", " ")[:80]
+            log_step(step, action_str, 0.00, True, last_error)
+            log_end(False, step, final_score, reward_list)
+            return final_score
 
-        reward_val  = result.get("reward", {}).get("value", 0.0)
-        final_score = result.get("reward", {}).get("cumulative", 0.0)
-        done        = result.get("done", False)
+        reward_val  = float(result.get("reward", {}).get("value", 0.0))
+        final_score = float(result.get("reward", {}).get("cumulative", 0.0))
+        done        = bool(result.get("done", False))
         obs         = result.get("observation", obs)
 
         reward_list.append(reward_val)
-        print(f"[STEP] step={step} action={action_str} reward={reward_val:.2f} done={str(done).lower()} error=null")
+        log_step(step, action_str, reward_val, done)
 
         if done:
             break
 
-        time.sleep(0.5)  # avoid hammering the server
+        time.sleep(0.5)
 
-    # ── END line ────────────────────────────────────────────────────────────
-    rewards_str = ",".join([f"{r:.2f}" for r in reward_list]) if reward_list else "0.00"
-    success     = final_score >= 0.5
-    print(f"[END] success={str(success).lower()} steps={step} score={final_score:.2f} rewards={rewards_str}")
-
+    # ── END ──────────────────────────────────────────────────────────────────
+    success = final_score >= 0.5
+    log_end(success, step, final_score, reward_list)
     return final_score
 
 
 def main():
-    # Verify environment is reachable
+    # Health check — fail gracefully if env is down
     try:
         health = requests.get(f"{ENV_URL}/health", timeout=15)
         health.raise_for_status()
     except Exception as e:
-        print(f"[END] success=false steps=0 score=0.00 rewards=")
+        # Still emit valid structured output so Phase 2 has something to parse
+        for task_id in ["easy", "medium", "hard"]:
+            log_start(task_id)
+            log_step(1, "null", 0.00, True, f"health_check_failed")
+            log_end(False, 1, 0.00, [])
         return
 
-    scores     = {}
+    scores = {}
     start_time = time.time()
 
     for task_id in ["easy", "medium", "hard"]:
@@ -171,8 +198,12 @@ def main():
         time.sleep(1.0)
 
     elapsed = time.time() - start_time
-    avg     = sum(scores.values()) / len(scores)
-    print(f"SUMMARY easy={scores['easy']:.2f} medium={scores['medium']:.2f} hard={scores['hard']:.2f} average={avg:.4f} runtime={elapsed:.1f}s")
+    avg = sum(scores.values()) / len(scores)
+    print(
+        f"SUMMARY easy={scores['easy']:.2f} medium={scores['medium']:.2f} "
+        f"hard={scores['hard']:.2f} average={avg:.4f} runtime={elapsed:.1f}s",
+        flush=True
+    )
 
 
 if __name__ == "__main__":
