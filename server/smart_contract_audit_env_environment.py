@@ -1,6 +1,19 @@
 from models import Action, Observation, StepResult, RewardInfo
 from typing import Dict
 
+# ---------------------------------------------------------------------------
+# VALIDATOR REQUIREMENT: scores must be STRICTLY between 0 and 1
+# i.e. score > 0.0 and score < 1.0  — never exactly 0.0 or 1.0
+# We clamp all scores to [0.01, 0.99] to satisfy this.
+# ---------------------------------------------------------------------------
+SCORE_MIN = 0.01
+SCORE_MAX = 0.99
+
+def clamp(score: float) -> float:
+    """Clamp score to strictly open interval (0, 1) as required by validator."""
+    return round(max(SCORE_MIN, min(SCORE_MAX, score)), 4)
+
+
 CONTRACTS = {
     "easy": {
         "code": """
@@ -230,20 +243,18 @@ class SmartContractAuditEnv:
         for task_id in ["easy", "medium", "hard"]:
             self.states[task_id] = {
                 "step_count": 0,
-                "current_score": 0.0,
+                "current_score": SCORE_MIN,
                 "last_feedback": "",
                 "last_findings_count": 0,
-                "best_score": 0.0
+                "best_score": SCORE_MIN
             }
 
     def _match_vulnerability(self, finding: str, vuln_key: str, contract: dict) -> bool:
-        """Semantic matching: checks synonyms, partial phrases, and fuzzy keyword overlap."""
         finding_lower = finding.lower()
         synonyms = contract.get("vuln_synonyms", {}).get(vuln_key, [vuln_key])
         for synonym in synonyms:
             if synonym.lower() in finding_lower:
                 return True
-        # Fuzzy: check if 2+ words of vuln_key appear in finding
         key_words = [w for w in vuln_key.lower().split() if len(w) > 3]
         if len(key_words) >= 2:
             matches = sum(1 for w in key_words if w in finding_lower)
@@ -252,7 +263,6 @@ class SmartContractAuditEnv:
         return False
 
     def _grade(self, action: Action, task_id: str) -> dict:
-        """Grade an action against the expected vulnerabilities using semantic matching."""
         contract = CONTRACTS[task_id]
         expected_vulns = contract["vulnerabilities"]
 
@@ -267,26 +277,29 @@ class SmartContractAuditEnv:
                         matched_vulns.add(vuln)
                     break
 
-        # Line number bonus: +0.05 per correctly referenced vulnerable line (max 0.1)
+        # Line number bonus
         line_bonus = 0.0
         if action.vulnerable_lines and contract.get("vulnerable_lines"):
             correct_lines = set(contract["vulnerable_lines"])
             submitted_lines = set(action.vulnerable_lines)
             matching_lines = correct_lines & submitted_lines
-            line_bonus = min(0.1, len(matching_lines) * 0.05)
+            line_bonus = min(0.08, len(matching_lines) * 0.04)
 
-        # Explanation quality bonus: +0.05 if explanation is substantive (>50 chars)
-        explanation_bonus = 0.05 if action.explanation and len(action.explanation) > 50 else 0.0
+        # Explanation quality bonus
+        explanation_bonus = 0.04 if action.explanation and len(action.explanation) > 50 else 0.0
 
         false_positives = max(0, len(action.findings) - true_positives)
         missed = len(expected_vulns) - true_positives
 
-        base_score = true_positives / len(expected_vulns) if expected_vulns else 0.0
+        base_score = true_positives / len(expected_vulns) if expected_vulns else SCORE_MIN
         fp_penalty = min(0.3, false_positives * 0.1)
-        score = max(0.0, min(1.0, base_score + line_bonus + explanation_bonus - fp_penalty))
+        raw_score = base_score + line_bonus + explanation_bonus - fp_penalty
+
+        # CRITICAL: clamp strictly between 0.01 and 0.99
+        score = clamp(raw_score)
 
         return {
-            "score": round(score, 4),
+            "score": score,
             "true_positives": true_positives,
             "false_positives": false_positives,
             "missed": missed,
@@ -298,17 +311,17 @@ class SmartContractAuditEnv:
     def reset(self, task_id: str = "easy") -> Observation:
         self.states[task_id] = {
             "step_count": 0,
-            "current_score": 0.0,
+            "current_score": SCORE_MIN,
             "last_feedback": "",
             "last_findings_count": 0,
-            "best_score": 0.0
+            "best_score": SCORE_MIN
         }
         contract = CONTRACTS[task_id]
         return Observation(
             task_id=task_id,
             task_description=contract["description"],
             contract_code=contract["code"],
-            current_score=0.0,
+            current_score=SCORE_MIN,
             last_feedback="",
             step_count=0,
             max_steps=5
@@ -320,31 +333,29 @@ class SmartContractAuditEnv:
         state["step_count"] += 1
 
         graded = self._grade(action, task_id)
-        score = graded["score"]
+        score = graded["score"]  # already clamped to (0.01, 0.99)
         true_positives = graded["true_positives"]
         false_positives = graded["false_positives"]
         missed = graded["missed"]
 
-        # Track best score for cumulative reward
-        prev_best = state.get("best_score", 0.0)
+        prev_best = state.get("best_score", SCORE_MIN)
         state["best_score"] = max(prev_best, score)
 
-        # Delta reward: reward improvement, penalise stagnation/regression
         prev_score = state["current_score"]
         delta = score - prev_score
-        if score >= 1.0:
-            reward_value = 1.0
-        elif delta > 0:
-            reward_value = score
+
+        # Reward value: always clamped, never 0.0 or 1.0
+        if delta > 0:
+            reward_value = clamp(score)
         elif state["step_count"] == 1:
-            reward_value = score
+            reward_value = clamp(score)
         else:
-            reward_value = max(0.0, score - 0.05)  # stagnation penalty
+            reward_value = clamp(max(SCORE_MIN, score - 0.05))
 
         state["current_score"] = score
         state["last_findings_count"] = len(action.findings)
 
-        # Rich actionable feedback with specific hints per missing vuln
+        # Feedback
         expected_vulns = contract["vulnerabilities"]
         vuln_hints = {
             "reentrancy":             "Look for external calls (msg.sender.call) before state updates",
@@ -354,17 +365,17 @@ class SmartContractAuditEnv:
             "oracle manipulation":    "Check for single external price sources without TWAP or aggregation",
         }
 
-        if score >= 1.0:
-            feedback = "Perfect audit! All vulnerabilities found with precise line references."
+        if score >= SCORE_MAX:
+            feedback = "Excellent audit! All vulnerabilities found with precise analysis."
         elif true_positives == len(expected_vulns):
-            feedback = f"All {true_positives} vulnerabilities found! Reduce false positives to maximise score. FP={false_positives}."
+            feedback = f"All {true_positives} vulnerabilities found! Reduce false positives to maximise score."
         elif true_positives > 0:
             unmatched = [v for v in expected_vulns if v not in graded["matched_vulns"]]
             hint_msgs = [vuln_hints.get(v, f"Check for {v}") for v in unmatched[:2]]
             hints_str = " | ".join(hint_msgs)
             feedback = (
                 f"Found {true_positives}/{len(expected_vulns)} vulnerabilities. "
-                f"Still missing: {[v for v in unmatched]}. "
+                f"Still missing: {unmatched}. "
                 f"Hints: {hints_str}."
             )
         else:
@@ -375,7 +386,7 @@ class SmartContractAuditEnv:
             )
 
         state["last_feedback"] = feedback
-        done = (score >= 1.0) or (state["step_count"] >= 5)
+        done = (score >= SCORE_MAX) or (state["step_count"] >= 5)
 
         obs = Observation(
             task_id=task_id,
