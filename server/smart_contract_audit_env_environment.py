@@ -4,17 +4,23 @@ from typing import Dict
 SCORE_MIN = 0.01
 SCORE_MAX = 0.99
 
+
 def clamp(score) -> float:
+    """Clamp to strictly open (0, 1). CRITICAL: uses truncation not rounding."""
     try:
         v = float(score)
     except Exception:
         return SCORE_MIN
-    if v <= 0.0: return SCORE_MIN
-    if v >= 1.0: return SCORE_MAX
-    # CRITICAL: use truncation not rounding to avoid banker's rounding to 1.0
+    if v <= 0.0:
+        return SCORE_MIN
+    if v >= 1.0:
+        return SCORE_MAX
+    # Truncate to 4 decimal places — avoids banker's rounding 0.995 -> 1.0
     v = int(v * 10000) / 10000.0
-    if v <= 0.0: return SCORE_MIN
-    if v >= 1.0: return SCORE_MAX
+    if v <= 0.0:
+        return SCORE_MIN
+    if v >= 1.0:
+        return SCORE_MAX
     return v
 
 
@@ -290,11 +296,9 @@ class SmartContractAuditEnv:
         missed = len(expected_vulns) - true_positives
 
         base_score = (true_positives / len(expected_vulns)) if expected_vulns else SCORE_MIN
-        # Cap base_score so it cannot reach 1.0: max tp/total = 1.0, with bonuses max = 1.07
-        # Cap the whole thing at 0.97 BEFORE final clamp
         fp_penalty = min(0.3, false_positives * 0.1)
         raw_score = base_score + line_bonus + explanation_bonus - fp_penalty
-        # Hard cap at 0.97 before clamp — ensures clamp never sees exactly 1.0
+        # Hard cap at 0.97 before final clamp — ensures clamp NEVER sees exactly 1.0
         raw_score = min(raw_score, 0.97)
         score = clamp(raw_score)
 
@@ -307,6 +311,10 @@ class SmartContractAuditEnv:
             "line_bonus": line_bonus,
             "explanation_bonus": explanation_bonus
         }
+
+    def grade(self, task_id: str = "easy") -> float:
+        """Return the current score for a task. Always strictly in (SCORE_MIN, SCORE_MAX)."""
+        return clamp(self.states.get(task_id, {}).get("current_score", SCORE_MIN))
 
     def reset(self, task_id: str = "easy") -> Observation:
         self.states[task_id] = {
@@ -343,9 +351,11 @@ class SmartContractAuditEnv:
         prev_score = state["current_score"]
         delta = score - prev_score
 
+        # CRITICAL: reward must be strictly > 0 and < 1 at ALL times
         if delta > 0 or state["step_count"] == 1:
             reward_value = clamp(score)
         else:
+            # No improvement — still return SCORE_MIN not 0.0
             reward_value = clamp(max(SCORE_MIN, score - 0.05))
 
         state["current_score"] = score
@@ -376,7 +386,8 @@ class SmartContractAuditEnv:
             feedback = f"No correct vulnerabilities found. Hints: {all_hints}."
 
         state["last_feedback"] = feedback
-        done = (score >= SCORE_MAX) or (state["step_count"] >= 5)
+        # Done when max score reached (0.95+) or steps exhausted
+        done = (score >= 0.95) or (state["step_count"] >= 5)
 
         obs = Observation(
             task_id=task_id,
@@ -395,11 +406,19 @@ class SmartContractAuditEnv:
             false_positives=false_positives,
             missed_vulnerabilities=missed
         )
-        return StepResult(observation=obs, reward=reward, done=done,
-            info={"step": state["step_count"], "true_positives": true_positives,
-                  "false_positives": false_positives, "missed": missed,
-                  "matched_vulns": graded["matched_vulns"],
-                  "best_score": state["best_score"]})
+        return StepResult(
+            observation=obs,
+            reward=reward,
+            done=done,
+            info={
+                "step": state["step_count"],
+                "true_positives": true_positives,
+                "false_positives": false_positives,
+                "missed": missed,
+                "matched_vulns": graded["matched_vulns"],
+                "best_score": clamp(state["best_score"])
+            }
+        )
 
     def state(self, task_id: str = "easy") -> Observation:
         contract = CONTRACTS[task_id]

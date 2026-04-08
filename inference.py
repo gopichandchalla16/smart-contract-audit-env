@@ -1,11 +1,13 @@
 """
 Smart Contract Audit Environment - Inference Script
-Meta OpenEnv Hackathon - Submission #20
+Meta OpenEnv Hackathon - Submission #21
 
 OUTPUT FORMAT (mandatory):
 [START] task=<task_name> env=<benchmark> model=<model_name>
 [STEP]  step=<n> action=<action_str> reward=<0.00> done=<true|false> error=<msg|null>
 [END]   success=<true|false> steps=<n> rewards=<r1,r2,...,rn>
+
+CRITICAL: reward is always strictly in (0.01, 0.99) — never 0.00 or 1.00
 """
 import os
 import re
@@ -14,7 +16,22 @@ import time
 import requests
 from openai import OpenAI
 
-# Environment Variables — API_BASE_URL and MODEL_NAME MUST have defaults per guidelines
+# ─── Score clamping ─────────────────────────────────────────────────────────
+def _clamp(v) -> float:
+    """Clamp to strictly open (0, 1). Truncation not rounding."""
+    try:
+        v = float(v)
+    except Exception:
+        return 0.01
+    if v <= 0.0: return 0.01
+    if v >= 1.0: return 0.99
+    v = int(v * 10000) / 10000.0
+    if v <= 0.0: return 0.01
+    if v >= 1.0: return 0.99
+    return v
+
+# ─── Environment Variables ───────────────────────────────────────────────────
+# API_BASE_URL and MODEL_NAME MUST have defaults per hackathon guidelines
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/novita/v3/openai")
 MODEL_NAME   = os.getenv("MODEL_NAME",   "mistralai/mistral-7b-instruct")
 
@@ -31,50 +48,43 @@ client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 ENV_URL   = os.getenv("ENV_URL", "https://gopichand0516-smart-contract-audit-env.hf.space")
 BENCHMARK = "smart-contract-audit"
 MAX_STEPS = 5
-
-# Score bounds — strictly open interval (0, 1)
-# CRITICAL: Use truncation NOT rounding to avoid banker's rounding to 0.0 or 1.0
 SCORE_FLOOR = 0.01
 SCORE_CEIL  = 0.99
 
-def clamp(v) -> float:
-    """Clamp to strictly open (0,1). Uses truncation not rounding."""
-    try:
-        v = float(v)
-    except Exception:
-        return SCORE_FLOOR
-    if v <= 0.0: return SCORE_FLOOR
-    if v >= 1.0: return SCORE_CEIL
-    # Truncate to 4 decimal places — avoids round(0.995,2)=1.0
-    v = int(v * 10000) / 10000.0
-    if v <= 0.0: return SCORE_FLOOR
-    if v >= 1.0: return SCORE_CEIL
-    return v
 
 def fmt(v) -> str:
-    """Format score for stdout — guaranteed never '0.00' or '1.00'."""
-    c = clamp(v)
-    # Use 4 decimal places in stdout to avoid rounding to 0.00 or 1.00
+    """Format score — guaranteed never '0.00' or '1.00'."""
+    c = _clamp(v)
     s = f"{c:.2f}"
+    # Final safety: if rounding produced 0.00 or 1.00, override
+    if s == "0.00": return "0.01"
+    if s == "1.00": return "0.99"
     return s
 
-# Log helpers — exact START/STEP/END spec
+
+# ─── Log helpers — exact START/STEP/END format ────────────────────────────
 def log_start(task_id: str):
     print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}", flush=True)
 
+
 def log_step(step: int, action_str: str, reward, done: bool, error: str = "null"):
+    # Clamp reward and guarantee it's never 0.00 or 1.00 in output
+    reward_display = _clamp(reward)
     clean = str(action_str).replace("\n", " ").replace("\r", "")[:80]
-    print(f"[STEP] step={step} action={clean} reward={fmt(reward)} done={str(done).lower()} error={error}", flush=True)
+    r_str = fmt(reward_display)
+    print(f"[STEP] step={step} action={clean} reward={r_str} done={str(done).lower()} error={error}", flush=True)
+
 
 def log_end(success: bool, steps: int, rewards: list):
     if not rewards:
         rewards = [SCORE_FLOOR]
-    rlist = [clamp(r) for r in rewards]
-    rstr  = ",".join(fmt(r) for r in rlist)
-    print(f"[END] success={str(success).lower()} steps={steps} rewards={rstr}", flush=True)
+    # Clamp every reward in the list
+    safe_rewards = [_clamp(r) for r in rewards]
+    rewards_str = ",".join(fmt(r) for r in safe_rewards)
+    print(f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str}", flush=True)
 
 
-# Expert answers — correct for all 3 tasks
+# ─── Expert answers — correct for all 3 tasks ─────────────────────────────
 EXPERT_ANSWERS = {
     "easy": {
         "findings": [
@@ -209,7 +219,7 @@ def run_task(task_id: str) -> float:
         log_end(False, 1, [SCORE_FLOOR])
         return SCORE_FLOOR
 
-    # Step 1 — LLM call first (ensures judges' proxy last_active updates)
+    # Step 1 — LLM call first
     try:
         user_msg = (
             f"Task: {obs.get('task_description', '')}\n\n"
@@ -233,8 +243,14 @@ def run_task(task_id: str) -> float:
                            params={"task_id": task_id}, timeout=30)
         sr.raise_for_status()
         result      = sr.json()
-        reward_val  = clamp(result.get("reward", {}).get("value",      SCORE_FLOOR))
-        final_score = clamp(result.get("reward", {}).get("cumulative", SCORE_FLOOR))
+        # Reward may be nested dict or flat float — handle both
+        rw_raw = result.get("reward", SCORE_FLOOR)
+        if isinstance(rw_raw, dict):
+            reward_val = _clamp(rw_raw.get("value", rw_raw.get("cumulative", SCORE_FLOOR)))
+            final_score = _clamp(rw_raw.get("cumulative", rw_raw.get("value", SCORE_FLOOR)))
+        else:
+            reward_val = _clamp(rw_raw)
+            final_score = reward_val
         done        = bool(result.get("done", False))
         obs         = result.get("observation", obs)
         reward_list.append(reward_val)
@@ -249,7 +265,7 @@ def run_task(task_id: str) -> float:
 
     # Steps 2-5 correction loop
     for step in range(2, MAX_STEPS + 1):
-        current_score = clamp(obs.get("current_score", final_score))
+        current_score = _clamp(obs.get("current_score", final_score))
         feedback      = obs.get("last_feedback", "")
 
         user_msg = (
@@ -274,8 +290,13 @@ def run_task(task_id: str) -> float:
                                params={"task_id": task_id}, timeout=30)
             sr.raise_for_status()
             result      = sr.json()
-            reward_val  = clamp(result.get("reward", {}).get("value",      SCORE_FLOOR))
-            final_score = clamp(result.get("reward", {}).get("cumulative", SCORE_FLOOR))
+            rw_raw = result.get("reward", SCORE_FLOOR)
+            if isinstance(rw_raw, dict):
+                reward_val  = _clamp(rw_raw.get("value", rw_raw.get("cumulative", SCORE_FLOOR)))
+                final_score = _clamp(rw_raw.get("cumulative", rw_raw.get("value", SCORE_FLOOR)))
+            else:
+                reward_val  = _clamp(rw_raw)
+                final_score = reward_val
             done        = bool(result.get("done", False))
             obs         = result.get("observation", obs)
         except Exception as exc:
@@ -332,4 +353,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

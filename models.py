@@ -4,17 +4,23 @@ from typing import List, Optional
 SCORE_FLOOR = 0.01
 SCORE_CEIL  = 0.99
 
+
 def _clamp(v) -> float:
+    """Clamp to strictly open (0, 1). Uses truncation to avoid banker's rounding."""
     try:
         v = float(v)
     except Exception:
         return SCORE_FLOOR
-    if v <= 0.0:  return SCORE_FLOOR
-    if v >= 1.0:  return SCORE_CEIL
-    # Use truncation NOT rounding — round(0.995,2)=1.0 on Python banker rounding
+    if v <= 0.0:
+        return SCORE_FLOOR
+    if v >= 1.0:
+        return SCORE_CEIL
+    # Truncate to 4 decimal places — avoids round(0.995,2)=1.0
     v = int(v * 10000) / 10000.0
-    if v <= 0.0: return SCORE_FLOOR
-    if v >= 1.0: return SCORE_CEIL
+    if v <= 0.0:
+        return SCORE_FLOOR
+    if v >= 1.0:
+        return SCORE_CEIL
     return v
 
 
@@ -40,8 +46,8 @@ class Action(BaseModel):
 
 
 class RewardInfo(BaseModel):
-    value: float
-    cumulative: float
+    value: float = SCORE_FLOOR
+    cumulative: float = SCORE_FLOOR
     message: str = ""
     true_positives: int = 0
     false_positives: int = 0
