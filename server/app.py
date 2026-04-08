@@ -26,7 +26,14 @@ SCORE_CEIL  = 0.99
 SCORE_KEYS = {
     "score", "reward", "value", "cumulative", "current_score",
     "total", "partial_credit", "grade", "task_score", "final_score",
-    "step_reward", "episode_reward", "points", "progress", "completion"
+    "step_reward", "episode_reward", "points", "progress", "completion",
+    "normalized_score", "quality", "accuracy", "best_score"
+}
+
+# Keys that are plain integer COUNTS — must NOT be clamped even if value is 0 or 1
+COUNT_KEYS = {
+    "true_positives", "false_positives", "missed", "missed_vulnerabilities",
+    "step_count", "step", "steps_taken", "max_steps", "steps"
 }
 
 
@@ -39,6 +46,7 @@ def _clamp(v) -> float:
         return SCORE_FLOOR
     if v >= 1.0:
         return SCORE_CEIL
+    # Truncate to 4 decimal places — avoids banker's rounding 0.995 -> 1.0
     v = int(v * 10000) / 10000.0
     if v <= 0.0:
         return SCORE_FLOOR
@@ -49,11 +57,16 @@ def _clamp(v) -> float:
 
 def sanitize(obj):
     """Recursively walk any JSON-serialisable structure and clamp all floats
-    that look like scores (between 0 and 1 inclusive, OR named as a score key)."""
+    that look like scores (between 0 and 1 inclusive, OR named as a score key).
+    Skips count-type integer fields to avoid clamping step counts etc."""
     if isinstance(obj, dict):
         out = {}
         for k, v in obj.items():
-            if isinstance(v, (int, float)) and k.lower() in SCORE_KEYS:
+            k_lower = k.lower()
+            # Never clamp count/integer fields
+            if k_lower in COUNT_KEYS:
+                out[k] = v
+            elif isinstance(v, (int, float)) and k_lower in SCORE_KEYS:
                 out[k] = _clamp(v)
             elif isinstance(v, float) and 0.0 <= v <= 1.0:
                 out[k] = _clamp(v)
