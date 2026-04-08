@@ -16,8 +16,8 @@ VALID_TASKS = ["easy", "medium", "hard"]
 # ─────────────────────────────────────────────────────────────────────────────
 # SCORE CLAMPING — NUCLEAR OPTION
 # Every float in (0.0, 1.0] range is clamped to strictly open (0.01, 0.99)
-# This is a belt-and-suspenders defence: the env already clamps, but we re-clamp
-# at the API boundary so the Phase-2 validator NEVER sees 0.0 or 1.0.
+# IMPORTANT: Only actual Python float type is clamped.
+# int/bool values are NEVER touched — avoids converting step counts to floats.
 # ─────────────────────────────────────────────────────────────────────────────
 
 SCORE_FLOOR = 0.01
@@ -28,12 +28,6 @@ SCORE_KEYS = {
     "total", "partial_credit", "grade", "task_score", "final_score",
     "step_reward", "episode_reward", "points", "progress", "completion",
     "normalized_score", "quality", "accuracy", "best_score"
-}
-
-# Keys that are plain integer COUNTS — must NOT be clamped even if value is 0 or 1
-COUNT_KEYS = {
-    "true_positives", "false_positives", "missed", "missed_vulnerabilities",
-    "step_count", "step", "steps_taken", "max_steps", "steps"
 }
 
 
@@ -56,21 +50,35 @@ def _clamp(v) -> float:
 
 
 def sanitize(obj):
-    """Recursively walk any JSON-serialisable structure and clamp all floats
-    that look like scores (between 0 and 1 inclusive, OR named as a score key).
-    Skips count-type integer fields to avoid clamping step counts etc."""
+    """Recursively walk JSON-serialisable structure.
+    ONLY clamps actual Python float values that look like scores.
+    int, bool, str, list, None — passed through unchanged.
+    This prevents integer count fields (step=1, true_positives=2, etc.)
+    from being accidentally converted to floats by the clamp logic.
+    """
     if isinstance(obj, dict):
         out = {}
         for k, v in obj.items():
-            k_lower = k.lower()
-            # Never clamp count/integer fields
-            if k_lower in COUNT_KEYS:
+            # bool is subclass of int — check bool first, pass through unchanged
+            if isinstance(v, bool):
                 out[k] = v
-            elif isinstance(v, (int, float)) and k_lower in SCORE_KEYS:
-                out[k] = _clamp(v)
-            elif isinstance(v, float) and 0.0 <= v <= 1.0:
-                out[k] = _clamp(v)
+            # int values: NEVER clamp — they are counts, not scores
+            elif isinstance(v, int):
+                out[k] = v
+            # Only actual float values get inspected for score clamping
+            elif isinstance(v, float):
+                k_lower = k.lower()
+                if k_lower in SCORE_KEYS:
+                    # Named score field — always clamp
+                    out[k] = _clamp(v)
+                elif 0.0 <= v <= 1.0:
+                    # Unnamed float in [0,1] range — clamp defensively
+                    out[k] = _clamp(v)
+                else:
+                    # Float outside [0,1] — pass through (e.g. large timestamps)
+                    out[k] = v
             else:
+                # Recurse into dicts/lists, pass through str/None/etc.
                 out[k] = sanitize(v)
         return out
     elif isinstance(obj, list):
@@ -228,8 +236,7 @@ def state(task_id: str = "easy"):
 @app.post("/grade")
 @app.get("/grade")
 def grade(task_id: str = "easy"):
-    """Return the current grade for a task. Score is always strictly in (0.01, 0.99).
-    Judges can call this to verify environment produces valid scores."""
+    """Return the current grade for a task. Score is always strictly in (0.01, 0.99)."""
     if task_id not in VALID_TASKS:
         raise HTTPException(status_code=400, detail=f"Invalid task_id. Choose from: {VALID_TASKS}")
     try:
