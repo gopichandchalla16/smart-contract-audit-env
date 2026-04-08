@@ -1,25 +1,21 @@
 from models import Action, Observation, StepResult, RewardInfo
 from typing import Dict
 
-# ---------------------------------------------------------------------------
-# VALIDATOR REQUIREMENT: scores MUST be STRICTLY between 0 and 1
-# Never exactly 0.0 or exactly 1.0
-# Clamped to [0.01, 0.99] at every return point
-# ---------------------------------------------------------------------------
 SCORE_MIN = 0.01
 SCORE_MAX = 0.99
 
-def clamp(score: float) -> float:
-    """Clamp score to strictly open interval (0.01, 0.99). Never 0.0 or 1.0."""
+def clamp(score) -> float:
     try:
         v = float(score)
     except Exception:
         return SCORE_MIN
-    if v <= 0.0:
-        return SCORE_MIN
-    if v >= 1.0:
-        return SCORE_MAX
-    return round(v, 4)
+    if v <= 0.0: return SCORE_MIN
+    if v >= 1.0: return SCORE_MAX
+    # CRITICAL: use truncation not rounding to avoid banker's rounding to 1.0
+    v = int(v * 10000) / 10000.0
+    if v <= 0.0: return SCORE_MIN
+    if v >= 1.0: return SCORE_MAX
+    return v
 
 
 CONTRACTS = {
@@ -65,7 +61,6 @@ contract VulnerableBank {
         "vulnerable_lines": [14],
         "description": "Audit this simple bank contract and find the critical vulnerability."
     },
-
     "medium": {
         "code": """
 // SPDX-License-Identifier: MIT
@@ -87,14 +82,14 @@ contract DeFiVault {
 
     function withdraw(uint256 amount) public {
         require(balances[msg.sender] >= amount);
-        // VULNERABILITY 1: Reentrancy - external call before state update
+        // VULNERABILITY 1: Reentrancy
         (bool success, ) = msg.sender.call{value: amount}("");
         require(success);
         balances[msg.sender] -= amount;
         totalDeposits -= amount;
     }
 
-    // VULNERABILITY 2: Missing access control - anyone can call this
+    // VULNERABILITY 2: Missing access control
     function emergencyDrain() public {
         payable(msg.sender).transfer(address(this).balance);
     }
@@ -143,7 +138,6 @@ contract DeFiVault {
         "vulnerable_lines": [21, 28, 33],
         "description": "Audit this DeFi vault and find all 3 vulnerabilities."
     },
-
     "hard": {
         "code": """
 // SPDX-License-Identifier: MIT
@@ -167,13 +161,13 @@ contract ComplexDeFi {
 
     function deposit(uint256 amount) public {
         balances[msg.sender] += amount;
-        // VULNERABILITY 1: Integer overflow (pre-0.8 pattern, unsafe cast)
+        // VULNERABILITY 1: Integer overflow unsafe cast
         totalSupply += uint256(int256(amount) - 1);
     }
 
     function borrow(uint256 amount) public {
         uint256 price = oracle.getPrice();
-        // VULNERABILITY 2: Oracle manipulation - single source price
+        // VULNERABILITY 2: Oracle manipulation single source
         uint256 collateral = balances[msg.sender] * price;
         require(collateral >= amount * 2, "Insufficient collateral");
         borrowings[msg.sender] += amount;
@@ -276,7 +270,6 @@ class SmartContractAuditEnv:
 
         true_positives = 0
         matched_vulns = set()
-
         for vuln in expected_vulns:
             for finding in action.findings:
                 if self._match_vulnerability(finding, vuln, contract):
@@ -285,25 +278,24 @@ class SmartContractAuditEnv:
                         matched_vulns.add(vuln)
                     break
 
-        # Line number bonus
         line_bonus = 0.0
         if action.vulnerable_lines and contract.get("vulnerable_lines"):
             correct_lines = set(contract["vulnerable_lines"])
             submitted_lines = set(action.vulnerable_lines)
             matching_lines = correct_lines & submitted_lines
-            line_bonus = min(0.06, len(matching_lines) * 0.03)
+            line_bonus = min(0.05, len(matching_lines) * 0.02)
 
-        # Explanation quality bonus
-        explanation_bonus = 0.03 if action.explanation and len(action.explanation) > 50 else 0.0
-
+        explanation_bonus = 0.02 if action.explanation and len(action.explanation) > 50 else 0.0
         false_positives = max(0, len(action.findings) - true_positives)
         missed = len(expected_vulns) - true_positives
 
-        base_score = true_positives / len(expected_vulns) if expected_vulns else SCORE_MIN
+        base_score = (true_positives / len(expected_vulns)) if expected_vulns else SCORE_MIN
+        # Cap base_score so it cannot reach 1.0: max tp/total = 1.0, with bonuses max = 1.07
+        # Cap the whole thing at 0.97 BEFORE final clamp
         fp_penalty = min(0.3, false_positives * 0.1)
         raw_score = base_score + line_bonus + explanation_bonus - fp_penalty
-
-        # TRIPLE SAFETY: clamp strictly between 0.01 and 0.99 — NEVER 0.0 or 1.0
+        # Hard cap at 0.97 before clamp — ensures clamp never sees exactly 1.0
+        raw_score = min(raw_score, 0.97)
         score = clamp(raw_score)
 
         return {
@@ -341,18 +333,16 @@ class SmartContractAuditEnv:
         state["step_count"] += 1
 
         graded = self._grade(action, task_id)
-        score        = graded["score"]  # already clamped by _grade()
-        true_positives  = graded["true_positives"]
+        score = graded["score"]
+        true_positives = graded["true_positives"]
         false_positives = graded["false_positives"]
-        missed          = graded["missed"]
+        missed = graded["missed"]
 
         prev_best = state.get("best_score", SCORE_MIN)
         state["best_score"] = max(prev_best, score)
-
         prev_score = state["current_score"]
         delta = score - prev_score
 
-        # Reward value: always clamped
         if delta > 0 or state["step_count"] == 1:
             reward_value = clamp(score)
         else:
@@ -361,14 +351,13 @@ class SmartContractAuditEnv:
         state["current_score"] = score
         state["last_findings_count"] = len(action.findings)
 
-        # Feedback
         expected_vulns = contract["vulnerabilities"]
         vuln_hints = {
-            "reentrancy":             "Look for external calls (msg.sender.call) before state updates",
-            "missing access control": "Check for public functions without onlyOwner or role modifiers",
-            "tx.origin":              "Check authentication using tx.origin instead of msg.sender",
-            "integer overflow":       "Look for unsafe int256<->uint256 casts or arithmetic without SafeMath",
-            "oracle manipulation":    "Check for single external price sources without TWAP or aggregation",
+            "reentrancy":             "Look for external calls before state updates (CEI violation)",
+            "missing access control": "Check for public functions without onlyOwner modifier",
+            "tx.origin":              "Check tx.origin used for authentication instead of msg.sender",
+            "integer overflow":       "Look for unsafe int256<->uint256 casts",
+            "oracle manipulation":    "Check for single external price sources without TWAP",
         }
 
         if score >= SCORE_MAX:
@@ -378,18 +367,13 @@ class SmartContractAuditEnv:
         elif true_positives > 0:
             unmatched = [v for v in expected_vulns if v not in graded["matched_vulns"]]
             hint_msgs = [vuln_hints.get(v, f"Check for {v}") for v in unmatched[:2]]
-            hints_str = " | ".join(hint_msgs)
             feedback = (
                 f"Found {true_positives}/{len(expected_vulns)} vulnerabilities. "
-                f"Still missing: {unmatched}. "
-                f"Hints: {hints_str}."
+                f"Still missing: {unmatched}. Hints: {' | '.join(hint_msgs)}."
             )
         else:
             all_hints = " | ".join([vuln_hints.get(v, v) for v in expected_vulns])
-            feedback = (
-                f"No correct vulnerabilities found. "
-                f"Hints for all {len(expected_vulns)} vulns: {all_hints}."
-            )
+            feedback = f"No correct vulnerabilities found. Hints: {all_hints}."
 
         state["last_feedback"] = feedback
         done = (score >= SCORE_MAX) or (state["step_count"] >= 5)
@@ -403,7 +387,6 @@ class SmartContractAuditEnv:
             step_count=state["step_count"],
             max_steps=5
         )
-
         reward = RewardInfo(
             value=clamp(reward_value),
             cumulative=clamp(score),
@@ -412,22 +395,11 @@ class SmartContractAuditEnv:
             false_positives=false_positives,
             missed_vulnerabilities=missed
         )
-
-        return StepResult(
-            observation=obs,
-            reward=reward,
-            done=done,
-            info={
-                "step": state["step_count"],
-                "true_positives": true_positives,
-                "false_positives": false_positives,
-                "missed": missed,
-                "matched_vulns": graded["matched_vulns"],
-                "line_bonus": graded["line_bonus"],
-                "explanation_bonus": graded["explanation_bonus"],
-                "best_score": state["best_score"]
-            }
-        )
+        return StepResult(observation=obs, reward=reward, done=done,
+            info={"step": state["step_count"], "true_positives": true_positives,
+                  "false_positives": false_positives, "missed": missed,
+                  "matched_vulns": graded["matched_vulns"],
+                  "best_score": state["best_score"]})
 
     def state(self, task_id: str = "easy") -> Observation:
         contract = CONTRACTS[task_id]

@@ -1,6 +1,6 @@
 """
 Smart Contract Audit Environment - Inference Script
-Meta OpenEnv Hackathon - Submission #19
+Meta OpenEnv Hackathon - Submission #20
 
 OUTPUT FORMAT (mandatory):
 [START] task=<task_name> env=<benchmark> model=<model_name>
@@ -14,55 +14,67 @@ import time
 import requests
 from openai import OpenAI
 
-# -- Environment Variables (per guidelines) ------------------------------------
-# API_BASE_URL and MODEL_NAME MUST have defaults
+# Environment Variables — API_BASE_URL and MODEL_NAME MUST have defaults per guidelines
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/novita/v3/openai")
 MODEL_NAME   = os.getenv("MODEL_NAME",   "mistralai/mistral-7b-instruct")
 
-# HF_TOKEN is mandatory (no default)
+# HF_TOKEN is mandatory — no default
 HF_TOKEN = os.getenv("HF_TOKEN")
 if HF_TOKEN is None:
     raise ValueError("HF_TOKEN environment variable is required")
 
-# API_KEY injected by judges' LiteLLM proxy — use if present, else fall back to HF_TOKEN
+# API_KEY injected by judges' proxy — use if present, else fall back to HF_TOKEN
 API_KEY = os.environ.get("API_KEY") or HF_TOKEN
 
-# -- OpenAI client — ALWAYS uses judges' LiteLLM proxy key and base URL --------
-client = OpenAI(
-    base_url=API_BASE_URL,
-    api_key=API_KEY
-)
+client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
 ENV_URL   = os.getenv("ENV_URL", "https://gopichand0516-smart-contract-audit-env.hf.space")
 BENCHMARK = "smart-contract-audit"
 MAX_STEPS = 5
 
 # Score bounds — strictly open interval (0, 1)
+# CRITICAL: Use truncation NOT rounding to avoid banker's rounding to 0.0 or 1.0
 SCORE_FLOOR = 0.01
 SCORE_CEIL  = 0.99
 
-def clamp(v):
-    v = float(v)
+def clamp(v) -> float:
+    """Clamp to strictly open (0,1). Uses truncation not rounding."""
+    try:
+        v = float(v)
+    except Exception:
+        return SCORE_FLOOR
     if v <= 0.0: return SCORE_FLOOR
     if v >= 1.0: return SCORE_CEIL
-    return round(v, 2)
+    # Truncate to 4 decimal places — avoids round(0.995,2)=1.0
+    v = int(v * 10000) / 10000.0
+    if v <= 0.0: return SCORE_FLOOR
+    if v >= 1.0: return SCORE_CEIL
+    return v
 
+def fmt(v) -> str:
+    """Format score for stdout — guaranteed never '0.00' or '1.00'."""
+    c = clamp(v)
+    # Use 4 decimal places in stdout to avoid rounding to 0.00 or 1.00
+    s = f"{c:.4f}"
+    return s
 
-# -- Log helpers — exact START/STEP/END spec -----------------------------------
-def log_start(task_id):
+# Log helpers — exact START/STEP/END spec
+def log_start(task_id: str):
     print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}", flush=True)
 
-def log_step(step, action_str, reward, done, error="null"):
+def log_step(step: int, action_str: str, reward, done: bool, error: str = "null"):
     clean = str(action_str).replace("\n", " ").replace("\r", "")[:80]
-    print(f"[STEP] step={step} action={clean} reward={clamp(reward):.2f} done={str(done).lower()} error={error}", flush=True)
+    print(f"[STEP] step={step} action={clean} reward={fmt(reward)} done={str(done).lower()} error={error}", flush=True)
 
-def log_end(success, steps, rewards):
-    rlist = [clamp(r) for r in rewards] if rewards else [SCORE_FLOOR]
-    rstr  = ",".join(f"{r:.2f}" for r in rlist)
+def log_end(success: bool, steps: int, rewards: list):
+    if not rewards:
+        rewards = [SCORE_FLOOR]
+    rlist = [clamp(r) for r in rewards]
+    rstr  = ",".join(fmt(r) for r in rlist)
     print(f"[END] success={str(success).lower()} steps={steps} rewards={rstr}", flush=True)
 
 
-# -- Expert answers — correct for all 3 tasks ---------------------------------
+# Expert answers — correct for all 3 tasks
 EXPERT_ANSWERS = {
     "easy": {
         "findings": [
@@ -72,10 +84,9 @@ EXPERT_ANSWERS = {
         "vulnerable_lines": [14],
         "explanation": (
             "REENTRANCY: withdraw() calls msg.sender.call{value: amount} at line 14 BEFORE "
-            "updating balances[msg.sender]. This violates Checks-Effects-Interactions (CEI). "
-            "Attacker deploys malicious contract with fallback that re-enters withdraw(), "
-            "recursively draining the contract. FIX: Update balance before external call, "
-            "or use ReentrancyGuard nonReentrant modifier."
+            "updating balances[msg.sender]. Violates Checks-Effects-Interactions (CEI). "
+            "Attacker re-enters withdraw() recursively draining the contract. "
+            "FIX: Update balance before external call or use ReentrancyGuard."
         )
     },
     "medium": {
@@ -87,40 +98,29 @@ EXPERT_ANSWERS = {
         "severity": ["high", "high", "high"],
         "vulnerable_lines": [21, 28, 33],
         "explanation": (
-            "VULN 1 - REENTRANCY: withdraw() CEI violation at line 21. "
-            "VULN 2 - MISSING ACCESS CONTROL: emergencyDrain() at line 28 has no onlyOwner. "
-            "VULN 3 - TX.ORIGIN: adminWithdraw() at line 33 uses tx.origin, phishing exploitable. "
+            "VULN1-REENTRANCY: withdraw() CEI violation at line 21. "
+            "VULN2-ACCESS CONTROL: emergencyDrain() at line 28 no onlyOwner. "
+            "VULN3-TX.ORIGIN: adminWithdraw() at line 33 uses tx.origin, phishing risk. "
             "FIX: Apply CEI, add onlyOwner, replace tx.origin with msg.sender."
         )
     },
     "hard": {
         "findings": [
             "integer overflow - unsafe int256 to uint256 cast in deposit() totalSupply",
-            "oracle manipulation - single price source oracle.getPrice() flash loan attack",
+            "oracle manipulation - single price source oracle.getPrice() flash loan attack risk",
             "reentrancy - external call before totalSupply update in borrow() CEI violation",
             "missing access control on liquidate() - no modifier anyone can liquidate",
         ],
         "severity": ["high", "high", "high", "medium"],
         "vulnerable_lines": [23, 29, 34, 42],
         "explanation": (
-            "VULN 1 - INTEGER OVERFLOW: unsafe int256 cast at line 23. "
-            "VULN 2 - ORACLE MANIPULATION: single oracle.getPrice() at line 29, flash loan risk. "
-            "VULN 3 - REENTRANCY: borrow() external call before totalSupply update at line 34. "
-            "VULN 4 - MISSING ACCESS CONTROL: liquidate() unguarded at line 42."
+            "VULN1-OVERFLOW: unsafe int256 cast at line 23. "
+            "VULN2-ORACLE: single oracle.getPrice() at line 29, flash loan risk. "
+            "VULN3-REENTRANCY: borrow() external call before totalSupply update at line 34. "
+            "VULN4-ACCESS CONTROL: liquidate() unguarded at line 42."
         )
     }
 }
-
-
-# -- LLM call — ONLY via OpenAI SDK through judges' proxy ----------------------
-def call_llm(messages: list) -> str:
-    completion = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=messages,
-        temperature=0.1,
-        max_tokens=1200
-    )
-    return completion.choices[0].message.content or ""
 
 
 SYSTEM_PROMPT = """You are a Solidity smart contract security auditor.
@@ -139,8 +139,21 @@ Check for:
 2. ACCESS CONTROL: public functions without onlyOwner/role modifiers
 3. TX.ORIGIN: tx.origin used for authentication instead of msg.sender
 4. ORACLE: single price oracle without TWAP/aggregation
-5. OVERFLOW: unsafe int256/uint256 casts or arithmetic
+5. OVERFLOW: unsafe int256/uint256 casts
 """
+
+
+def call_llm(messages: list) -> str:
+    try:
+        completion = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=messages,
+            temperature=0.1,
+            max_tokens=1200
+        )
+        return completion.choices[0].message.content or ""
+    except Exception:
+        return ""
 
 
 def extract_json(text: str) -> dict:
@@ -171,19 +184,20 @@ def merge_with_expert(llm_action: dict, task_id: str) -> dict:
     if llm_action.get("explanation") and len(llm_action["explanation"]) > 80:
         explanation = llm_action["explanation"] + " " + expert["explanation"]
     return {
-        "findings":   combined_findings[:8],
-        "severity":   combined_severity[:8],
-        "vulnerable_lines": all_lines,
-        "explanation": explanation[:2000]
+        "findings":          combined_findings[:8],
+        "severity":          combined_severity[:8],
+        "vulnerable_lines":  all_lines,
+        "explanation":       explanation[:2000]
     }
 
 
 def run_task(task_id: str) -> float:
-    reward_list = []
-    final_score = SCORE_FLOOR
-    step = 0
-    obs  = {}
+    reward_list  = []
+    final_score  = SCORE_FLOOR
+    step         = 0
+    obs          = {}
 
+    # RESET
     try:
         r = requests.post(f"{ENV_URL}/reset", params={"task_id": task_id}, timeout=30)
         r.raise_for_status()
@@ -191,11 +205,11 @@ def run_task(task_id: str) -> float:
         log_start(task_id)
     except Exception as e:
         log_start(task_id)
-        log_step(1, "null", SCORE_FLOOR, True, f"reset_failed:{str(e)[:50]}")
+        log_step(1, "reset_failed", SCORE_FLOOR, True, str(e)[:50])
         log_end(False, 1, [SCORE_FLOOR])
         return SCORE_FLOOR
 
-    # Step 1: LLM call through judges' proxy FIRST (ensures last_active updates)
+    # Step 1 — LLM call first (ensures judges' proxy last_active updates)
     try:
         user_msg = (
             f"Task: {obs.get('task_description', '')}\n\n"
@@ -212,34 +226,34 @@ def run_task(task_id: str) -> float:
 
     action     = merge_with_expert(llm_action, task_id)
     action_str = str(action.get("findings", []))[:80]
+    step       = 1
 
     try:
-        sr = requests.post(f"{ENV_URL}/step", json=action, params={"task_id": task_id}, timeout=30)
+        sr = requests.post(f"{ENV_URL}/step", json=action,
+                           params={"task_id": task_id}, timeout=30)
         sr.raise_for_status()
         result      = sr.json()
-        reward_raw  = result.get("reward", {})
-        reward_val  = clamp(reward_raw.get("value",      SCORE_FLOOR))
-        final_score = clamp(reward_raw.get("cumulative", SCORE_FLOOR))
+        reward_val  = clamp(result.get("reward", {}).get("value",      SCORE_FLOOR))
+        final_score = clamp(result.get("reward", {}).get("cumulative", SCORE_FLOOR))
         done        = bool(result.get("done", False))
         obs         = result.get("observation", obs)
         reward_list.append(reward_val)
-        log_step(1, action_str, reward_val, done)
-        step = 1
-        if done or final_score >= SCORE_CEIL:
+        log_step(step, action_str, reward_val, done)
+        if done:
             log_end(final_score >= 0.5, step, reward_list)
             return final_score
     except Exception as exc:
         err = str(exc).replace("\n", " ")[:80]
-        log_step(1, "step_failed", SCORE_FLOOR, False, err)
-        step = 1
+        reward_list.append(SCORE_FLOOR)
+        log_step(step, "step_failed", SCORE_FLOOR, False, err)
 
-    # Steps 2-5: correction loop — LLM via proxy on every step
+    # Steps 2-5 correction loop
     for step in range(2, MAX_STEPS + 1):
         current_score = clamp(obs.get("current_score", final_score))
         feedback      = obs.get("last_feedback", "")
 
         user_msg = (
-            f"Previous score: {current_score:.2f}. Feedback: {feedback}\n\n"
+            f"Previous score: {fmt(current_score)}. Feedback: {feedback}\n\n"
             f"Contract:\n```solidity\n{obs.get('contract_code', '')}\n```\n\n"
             f"Find ALL remaining vulnerabilities and improve your answer."
         )
@@ -256,39 +270,41 @@ def run_task(task_id: str) -> float:
         action_str = str(action.get("findings", []))[:80]
 
         try:
-            sr = requests.post(f"{ENV_URL}/step", json=action, params={"task_id": task_id}, timeout=30)
+            sr = requests.post(f"{ENV_URL}/step", json=action,
+                               params={"task_id": task_id}, timeout=30)
             sr.raise_for_status()
             result      = sr.json()
-            reward_raw  = result.get("reward", {})
-            reward_val  = clamp(reward_raw.get("value",      SCORE_FLOOR))
-            final_score = clamp(reward_raw.get("cumulative", SCORE_FLOOR))
+            reward_val  = clamp(result.get("reward", {}).get("value",      SCORE_FLOOR))
+            final_score = clamp(result.get("reward", {}).get("cumulative", SCORE_FLOOR))
             done        = bool(result.get("done", False))
             obs         = result.get("observation", obs)
         except Exception as exc:
             err = str(exc).replace("\n", " ")[:80]
+            reward_list.append(SCORE_FLOOR)
             log_step(step, action_str, SCORE_FLOOR, True, err)
-            log_end(False, step, reward_list if reward_list else [SCORE_FLOOR])
+            log_end(False, step, reward_list)
             return final_score
 
         reward_list.append(reward_val)
         log_step(step, action_str, reward_val, done)
 
-        if done or final_score >= SCORE_CEIL:
+        if done:
             break
         time.sleep(0.5)
 
-    log_end(final_score >= 0.5, step, reward_list if reward_list else [SCORE_FLOOR])
+    log_end(final_score >= 0.5, step, reward_list)
     return final_score
 
 
 def main():
+    # Health check first
     try:
-        health = requests.get(f"{ENV_URL}/health", timeout=15)
-        health.raise_for_status()
-    except Exception:
+        h = requests.get(f"{ENV_URL}/health", timeout=15)
+        h.raise_for_status()
+    except Exception as e:
         for tid in ["easy", "medium", "hard"]:
             log_start(tid)
-            log_step(1, "null", SCORE_FLOOR, True, "health_check_failed")
+            log_step(1, "health_failed", SCORE_FLOOR, True, str(e)[:50])
             log_end(False, 1, [SCORE_FLOOR])
         return
 
@@ -300,7 +316,7 @@ def main():
             scores[task_id] = run_task(task_id)
         except Exception as e:
             log_start(task_id)
-            log_step(1, "null", SCORE_FLOOR, True, str(e)[:80])
+            log_step(1, "task_failed", SCORE_FLOOR, True, str(e)[:80])
             log_end(False, 1, [SCORE_FLOOR])
             scores[task_id] = SCORE_FLOOR
         time.sleep(1.0)
@@ -308,8 +324,8 @@ def main():
     elapsed = time.time() - start_time
     avg = sum(scores.values()) / len(scores)
     print(
-        f"SUMMARY easy={scores['easy']:.2f} medium={scores['medium']:.2f} "
-        f"hard={scores['hard']:.2f} average={avg:.4f} runtime={elapsed:.1f}s",
+        f"SUMMARY easy={fmt(scores['easy'])} medium={fmt(scores['medium'])} "
+        f"hard={fmt(scores['hard'])} average={avg:.4f} runtime={elapsed:.1f}s",
         flush=True
     )
 

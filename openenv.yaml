@@ -1,6 +1,6 @@
 name: smart-contract-audit-env
 version: "1.0.0"
-description: "A real-world OpenEnv environment for AI-powered Solidity smart contract security auditing. An agent learns to identify vulnerabilities like reentrancy, access control issues, and integer overflows."
+description: "OpenEnv environment for AI-powered Solidity smart contract security auditing."
 author: "gopichandchalla16"
 tags:
   - openenv
@@ -9,7 +9,6 @@ tags:
   - security
   - web3
   - reinforcement-learning
-  - code-review
 
 tasks:
   - id: easy
@@ -19,13 +18,13 @@ tasks:
     reward_threshold: 0.5
 
   - id: medium
-    description: "Audit a DeFi contract with 3 vulnerabilities: reentrancy, missing access control, and tx.origin authentication"
+    description: "Audit a DeFi contract with 3 vulnerabilities"
     difficulty: medium
     max_steps: 5
     reward_threshold: 0.5
 
   - id: hard
-    description: "Audit a complex DeFi protocol with 4 vulnerabilities including oracle manipulation and integer overflow"
+    description: "Audit a complex DeFi protocol with 4 vulnerabilities"
     difficulty: hard
     max_steps: 5
     reward_threshold: 0.5
