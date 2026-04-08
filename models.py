@@ -1,65 +1,51 @@
-from pydantic import BaseModel, validator
-from typing import List, Optional
-
-SCORE_FLOOR = 0.01
-SCORE_CEIL  = 0.99
-
-
-def _clamp(v) -> float:
-    """Clamp to strictly open (0, 1). Uses truncation to avoid banker's rounding."""
-    try:
-        v = float(v)
-    except Exception:
-        return SCORE_FLOOR
-    if v <= 0.0:
-        return SCORE_FLOOR
-    if v >= 1.0:
-        return SCORE_CEIL
-    # Truncate to 4 decimal places — avoids round(0.995,2)=1.0
-    v = int(v * 10000) / 10000.0
-    if v <= 0.0:
-        return SCORE_FLOOR
-    if v >= 1.0:
-        return SCORE_CEIL
-    return v
-
-
-class Observation(BaseModel):
-    task_id: str
-    task_description: str
-    contract_code: str
-    current_score: float = SCORE_FLOOR
-    last_feedback: str = ""
-    step_count: int = 0
-    max_steps: int = 5
-
-    @validator("current_score", pre=True, always=True)
-    def clamp_score(cls, v):
-        return _clamp(v if v is not None else SCORE_FLOOR)
+from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any
 
 
 class Action(BaseModel):
-    findings: List[str] = []
-    severity: List[str] = []
-    vulnerable_lines: List[int] = []
-    explanation: str = ""
+    """Agent's audit submission for a smart contract."""
+    findings: List[str] = Field(
+        default=[],
+        description="List of vulnerability findings. Each entry is a concise description."
+    )
+    severity: List[str] = Field(
+        default=[],
+        description="Severity label per finding: 'high', 'medium', or 'low'. Must match findings length."
+    )
+    vulnerable_lines: List[int] = Field(
+        default=[],
+        description="List of line numbers where vulnerabilities were found."
+    )
+    explanation: str = Field(
+        default="",
+        description="Detailed technical explanation of all vulnerabilities, attack vectors, and recommended fixes."
+    )
+
+
+class Observation(BaseModel):
+    """Environment observation returned to the agent."""
+    task_id: str
+    task_description: str
+    contract_code: str
+    current_score: float
+    last_feedback: str
+    step_count: int
+    max_steps: int
 
 
 class RewardInfo(BaseModel):
-    value: float = SCORE_FLOOR
-    cumulative: float = SCORE_FLOOR
-    message: str = ""
-    true_positives: int = 0
-    false_positives: int = 0
-    missed_vulnerabilities: int = 0
-
-    @validator("value", "cumulative", pre=True, always=True)
-    def clamp_reward(cls, v):
-        return _clamp(v if v is not None else SCORE_FLOOR)
+    """Detailed reward breakdown."""
+    value: float         = Field(..., description="Per-step reward, strictly in (0, 1)")
+    cumulative: float    = Field(..., description="Cumulative task score, strictly in (0, 1)")
+    message: str         = Field(default="", description="Human-readable feedback")
+    true_positives: int  = Field(default=0)
+    false_positives: int = Field(default=0)
+    missed_vulnerabilities: int = Field(default=0)
 
 
 class StepResult(BaseModel):
+    """Full result returned by env.step()."""
     observation: Observation
     reward: RewardInfo
     done: bool
-    info: dict = {}
+    info: Dict[str, Any] = Field(default_factory=dict)

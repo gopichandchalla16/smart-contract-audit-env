@@ -1,0 +1,238 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# OpenEnv Environment Metadata
+# Meta OpenEnv Hackathon (Scaler × Meta PyTorch) — April 2026
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: smart-contract-audit-env
+version: "2.0.0"
+description: >
+  A reinforcement learning environment for training AI agents to perform
+  expert-level smart contract security audits. Agents analyze Solidity source
+  code and identify real-world vulnerabilities including reentrancy, oracle
+  manipulation, delegatecall privilege escalation, unchecked return values,
+  and missing access control. Modeled after real DeFi protocol hacks (DAO,
+  Euler Finance, Cream Finance).
+
+author:
+  name: Gopichand Challa
+  github: gopichandchalla16
+  huggingface: Gopichand0516
+
+license: MIT
+
+huggingface_space: https://huggingface.co/spaces/Gopichand0516/smart-contract-audit-env
+github_repo: https://github.com/gopichandchalla16/smart-contract-audit-env
+
+tags:
+  - smart-contracts
+  - security
+  - code-review
+  - web3
+  - openenv
+  - solidity
+  - defi
+  - vulnerability-detection
+  - reinforcement-learning
+  - chain-of-thought
+
+# ─── Environment Configuration ─────────────────────────────────────────────
+
+environment:
+  type: text-based
+  language: Solidity
+  framework: FastAPI
+  runtime: Docker
+  base_url: https://gopichand0516-smart-contract-audit-env.hf.space
+
+# ─── Observation Space ─────────────────────────────────────────────────────
+
+observation_space:
+  type: dict
+  fields:
+    task_id:
+      type: str
+      values: ["easy", "medium", "hard"]
+      description: Task difficulty identifier
+    task_description:
+      type: str
+      description: Natural language audit brief describing what to find
+    contract_code:
+      type: str
+      description: Full Solidity source code of the vulnerable contract
+    current_score:
+      type: float
+      range: (0.0, 1.0)   # strictly open interval
+      description: Current cumulative reward score
+    last_feedback:
+      type: str
+      description: Grader hints to guide the next action
+    step_count:
+      type: int
+      range: [0, 5]
+    max_steps:
+      type: int
+      value: 5
+
+# ─── Action Space ──────────────────────────────────────────────────────────
+
+action_space:
+  type: dict
+  fields:
+    findings:
+      type: List[str]
+      description: List of vulnerability descriptions (one per vulnerability found)
+      example: ["reentrancy in withdraw() - external call before state update"]
+    severity:
+      type: List[str]
+      values: ["high", "medium", "low"]
+      description: Severity label per finding — must match findings list length
+      example: ["high"]
+    vulnerable_lines:
+      type: List[int]
+      description: Line numbers where vulnerabilities were identified
+      example: [14, 28, 33]
+    explanation:
+      type: str
+      description: >
+        Detailed technical explanation covering: attack vector, exploit scenario,
+        affected functions, and recommended fix for each vulnerability.
+      min_length: 50
+
+# ─── Tasks ────────────────────────────────────────────────────────────────
+
+tasks:
+  - id: easy
+    name: VulnerableBank Reentrancy
+    difficulty: easy
+    max_steps: 5
+    reward_range: [0.01, 0.97]
+    vulnerabilities:
+      - name: reentrancy
+        severity: high
+        line: 14
+        description: External call before state update in withdraw() — CEI violation
+        real_world_analog: DAO Hack 2016 ($60M)
+    contract: VulnerableBank.sol
+    grading_criteria:
+      base: tp / total_vulnerabilities
+      severity_bonus: +0.03 per correct severity label
+      line_bonus: +0.015 per correct line number
+      explanation_bonus: up to +0.05 for detailed explanation
+      keyword_bonus: +0.01 per technical keyword (cap 0.04)
+      fp_penalty: -0.12 per false positive
+
+  - id: medium
+    name: DeFiVault Multi-Vulnerability
+    difficulty: medium
+    max_steps: 5
+    reward_range: [0.01, 0.97]
+    vulnerabilities:
+      - name: reentrancy
+        severity: high
+        line: 21
+        description: External call before state update in withdraw()
+      - name: missing access control
+        severity: medium
+        line: 28
+        description: emergencyDrain() has no onlyOwner modifier
+      - name: tx.origin
+        severity: high
+        line: 33
+        description: adminWithdraw() authenticates with tx.origin (phishing attack surface)
+    contract: DeFiVault.sol
+    grading_criteria:
+      base: tp / total_vulnerabilities
+      severity_bonus: +0.03 per correct severity label
+      line_bonus: +0.015 per correct line number
+      explanation_bonus: up to +0.05 for detailed explanation
+      keyword_bonus: +0.01 per technical keyword (cap 0.04)
+      fp_penalty: -0.12 per false positive
+
+  - id: hard
+    name: RiskyLend DeFi Protocol — 5-Vulnerability Audit
+    difficulty: hard
+    max_steps: 5
+    reward_range: [0.01, 0.97]
+    vulnerabilities:
+      - name: reentrancy
+        severity: high
+        line: 50
+        description: withdrawCollateral() sends ETH before pos.collateral update — CEI violation
+      - name: oracle manipulation
+        severity: high
+        line: 60
+        description: borrow() uses single spot price from priceOracle — flash loan attack surface
+      - name: delegatecall privilege escalation
+        severity: high
+        line: 79
+        description: executeUpgrade() calls implementation.delegatecall with no access control
+      - name: unchecked return value
+        severity: medium
+        line: 89
+        description: repayDebt() uses low-level token.call() without checking bool return
+      - name: missing access control
+        severity: medium
+        line: 99
+        description: setOracle() is public with no onlyGovernance modifier
+    contract: RiskyLend.sol
+    grading_criteria:
+      base: tp / total_vulnerabilities
+      severity_bonus: +0.03 per correct severity label
+      line_bonus: +0.015 per correct line number
+      explanation_bonus: up to +0.05 for detailed explanation
+      keyword_bonus: +0.01 per technical keyword (cap 0.04)
+      fp_penalty: -0.12 per false positive
+
+# ─── Reward Shaping ────────────────────────────────────────────────────────
+
+reward_shaping:
+  formula: >
+    reward = base_score
+           + severity_bonus  (max 0.12)
+           + line_bonus      (max 0.06)
+           + explanation_bonus (max 0.05)
+           + keyword_bonus   (max 0.04)
+           - fp_penalty      (max 0.35)
+           - wrong_sev_pen
+    clamp: strictly in (0.01, 0.99)
+  score_floor: 0.01
+  score_ceiling: 0.97
+  false_positive_penalty: -0.12 per FP
+  severity_bonus: +0.03 per correct label
+  line_number_bonus: +0.015 per correct line
+  explanation_min_chars: 300
+  technical_keywords:
+    - CEI
+    - checks-effects-interactions
+    - reentrancy guard
+    - nonReentrant
+    - TWAP
+    - oracle aggregator
+    - delegatecall
+    - onlyGovernance
+    - onlyOwner
+    - SafeERC20
+    - Chainlink
+    - attack vector
+    - exploit
+    - mitigation
+
+# ─── Trajectory Format ─────────────────────────────────────────────────────
+
+trajectory_format:
+  start_line: "[START] task={task_id} env={benchmark} model={model_name}"
+  step_line:  "[STEP] step={n} action={action_str} reward={r:.2f} done={true|false} error={msg|null}"
+  end_line:   "[END] success={true|false} steps={n} score={score:.2f} rewards={r1,r2,...}"
+  constraints:
+    - All reward values must be strictly in (0.01, 0.99)
+    - Never emit 0.00 or 1.00 as a reward
+    - Each [STEP] line must have all required fields
+
+# ─── Evaluation ────────────────────────────────────────────────────────────
+
+evaluation:
+  validation_endpoint: /validate
+  health_endpoint: /health
+  phase2_threshold: 0.50
+  all_tasks_must_pass: true
+  scoring_method: per_task_average
