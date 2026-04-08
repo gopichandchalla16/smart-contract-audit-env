@@ -1,3 +1,12 @@
+---
+title: Smart Contract Audit Env
+emoji: 🔐
+colorFrom: green
+colorTo: blue
+sdk: docker
+pinned: false
+---
+
 # 🔐 Smart Contract Audit Environment
 
 [![HF Space](https://img.shields.io/badge/🤗%20HuggingFace-Space-yellow)](https://huggingface.co/spaces/Gopichand0516/smart-contract-audit-env)
