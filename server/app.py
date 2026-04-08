@@ -17,6 +17,33 @@ from smart_contract_audit_env_environment import SmartContractAuditEnv
 START_TIME = time.time()
 VALID_TASKS = ["easy", "medium", "hard"]
 
+# NUCLEAR CLAMP: applied to every outgoing JSON response
+SCORE_FLOOR = 0.01
+SCORE_CEIL  = 0.99
+
+def nuclear_clamp(v) -> float:
+    """Last-resort clamp on every score before it leaves the server."""
+    try:
+        v = float(v)
+    except Exception:
+        return SCORE_FLOOR
+    if v <= 0.0:
+        return SCORE_FLOOR
+    if v >= 1.0:
+        return SCORE_CEIL
+    return round(v, 4)
+
+def sanitize_response(d: dict) -> dict:
+    """Walk the response dict and clamp all score fields. NUCLEAR SAFETY."""
+    score_fields = {"current_score", "value", "cumulative"}
+    for k, v in d.items():
+        if k in score_fields:
+            d[k] = nuclear_clamp(v)
+        elif isinstance(v, dict):
+            d[k] = sanitize_response(v)
+    return d
+
+
 app = FastAPI(
     title="Smart Contract Audit Environment",
     description="OpenEnv-compliant RL environment for AI-powered Solidity smart contract security auditing.",
@@ -49,14 +76,10 @@ def reinit_env() -> SmartContractAuditEnv:
 
 # ───────────────────────────────────────────────────────────────
 # 24/7 FREE KEEP-ALIVE: self-ping background thread
-# Pings /health every 4 minutes to prevent HF Space from sleeping.
-# Uses only the internal port — 100% free, no external service needed.
 # ───────────────────────────────────────────────────────────────
-KEEP_ALIVE_INTERVAL = 240  # 4 minutes - well within HF 5-min sleep timeout
+KEEP_ALIVE_INTERVAL = 240
 
 def _keep_alive_worker():
-    """Background thread: pings /health every 4 minutes forever."""
-    # Wait for server to fully start before first ping
     time.sleep(20)
     port = int(os.getenv("PORT", 7860))
     url  = f"http://localhost:{port}/health"
@@ -65,7 +88,7 @@ def _keep_alive_worker():
         try:
             resp = http_requests.get(url, timeout=10)
             ping_count += 1
-            if ping_count % 10 == 0:  # Log every 10th ping (~40 mins)
+            if ping_count % 10 == 0:
                 uptime = round((time.time() - START_TIME) / 3600, 2)
                 print(f"[KEEP-ALIVE] ping #{ping_count} OK | uptime={uptime}h | status={resp.status_code}", flush=True)
         except Exception as e:
@@ -74,7 +97,6 @@ def _keep_alive_worker():
 
 
 def _warmup_worker():
-    """Startup warmup: pre-runs all 3 tasks so first validator request is instant."""
     time.sleep(5)
     try:
         e = get_env()
@@ -87,11 +109,8 @@ def _warmup_worker():
 
 @app.on_event("startup")
 def startup_event():
-    """Launch keep-alive + warmup threads on server start."""
-    # Keep-alive thread
     ka_thread = threading.Thread(target=_keep_alive_worker, daemon=True, name="keep-alive")
     ka_thread.start()
-    # Warmup thread
     wu_thread = threading.Thread(target=_warmup_worker, daemon=True, name="warmup")
     wu_thread.start()
     print("[STARTUP] Keep-alive (4min interval) + warmup threads started.", flush=True)
@@ -166,10 +185,10 @@ def reset(task_id: str = "easy"):
         raise HTTPException(status_code=400, detail=f"Invalid task_id '{task_id}'. Choose from: {VALID_TASKS}")
     try:
         obs = get_env().reset(task_id=task_id)
-        return obs.dict()
+        return sanitize_response(obs.dict())
     except Exception:
         obs = reinit_env().reset(task_id=task_id)
-        return obs.dict()
+        return sanitize_response(obs.dict())
 
 
 # ── Step ───────────────────────────────────────────────────────────────
@@ -188,13 +207,13 @@ def step(action: Action, task_id: str = "easy"):
         if e.states.get(task_id, {}).get("step_count", 0) >= 5:
             e.reset(task_id=task_id)
         result = e.step(action=action, task_id=task_id)
-        return result.dict()
+        return sanitize_response(result.dict())
     except Exception as ex:
         try:
             e = reinit_env()
             e.reset(task_id=task_id)
             result = e.step(action=action, task_id=task_id)
-            return result.dict()
+            return sanitize_response(result.dict())
         except Exception as ex2:
             raise HTTPException(status_code=500, detail=f"Step failed: {str(ex2)}")
 
@@ -206,11 +225,11 @@ def state(task_id: str = "easy"):
         raise HTTPException(status_code=400, detail=f"Invalid task_id '{task_id}'. Choose from: {VALID_TASKS}")
     try:
         obs = get_env().state(task_id=task_id)
-        return obs.dict()
+        return sanitize_response(obs.dict())
     except Exception:
         e = reinit_env()
         e.reset(task_id=task_id)
-        return e.state(task_id=task_id).dict()
+        return sanitize_response(e.state(task_id=task_id).dict())
 
 
 # ── Legacy ───────────────────────────────────────────────────────────────
