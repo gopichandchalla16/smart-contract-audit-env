@@ -2,16 +2,24 @@ from models import Action, Observation, StepResult, RewardInfo
 from typing import Dict
 
 # ---------------------------------------------------------------------------
-# VALIDATOR REQUIREMENT: scores must be STRICTLY between 0 and 1
-# i.e. score > 0.0 and score < 1.0  — never exactly 0.0 or 1.0
-# We clamp all scores to [0.01, 0.99] to satisfy this.
+# VALIDATOR REQUIREMENT: scores MUST be STRICTLY between 0 and 1
+# Never exactly 0.0 or exactly 1.0
+# Clamped to [0.01, 0.99] at every return point
 # ---------------------------------------------------------------------------
 SCORE_MIN = 0.01
 SCORE_MAX = 0.99
 
 def clamp(score: float) -> float:
-    """Clamp score to strictly open interval (0, 1) as required by validator."""
-    return round(max(SCORE_MIN, min(SCORE_MAX, score)), 4)
+    """Clamp score to strictly open interval (0.01, 0.99). Never 0.0 or 1.0."""
+    try:
+        v = float(score)
+    except Exception:
+        return SCORE_MIN
+    if v <= 0.0:
+        return SCORE_MIN
+    if v >= 1.0:
+        return SCORE_MAX
+    return round(v, 4)
 
 
 CONTRACTS = {
@@ -283,10 +291,10 @@ class SmartContractAuditEnv:
             correct_lines = set(contract["vulnerable_lines"])
             submitted_lines = set(action.vulnerable_lines)
             matching_lines = correct_lines & submitted_lines
-            line_bonus = min(0.08, len(matching_lines) * 0.04)
+            line_bonus = min(0.06, len(matching_lines) * 0.03)
 
         # Explanation quality bonus
-        explanation_bonus = 0.04 if action.explanation and len(action.explanation) > 50 else 0.0
+        explanation_bonus = 0.03 if action.explanation and len(action.explanation) > 50 else 0.0
 
         false_positives = max(0, len(action.findings) - true_positives)
         missed = len(expected_vulns) - true_positives
@@ -295,7 +303,7 @@ class SmartContractAuditEnv:
         fp_penalty = min(0.3, false_positives * 0.1)
         raw_score = base_score + line_bonus + explanation_bonus - fp_penalty
 
-        # CRITICAL: clamp strictly between 0.01 and 0.99
+        # TRIPLE SAFETY: clamp strictly between 0.01 and 0.99 — NEVER 0.0 or 1.0
         score = clamp(raw_score)
 
         return {
@@ -333,10 +341,10 @@ class SmartContractAuditEnv:
         state["step_count"] += 1
 
         graded = self._grade(action, task_id)
-        score = graded["score"]  # already clamped to (0.01, 0.99)
-        true_positives = graded["true_positives"]
+        score        = graded["score"]  # already clamped by _grade()
+        true_positives  = graded["true_positives"]
         false_positives = graded["false_positives"]
-        missed = graded["missed"]
+        missed          = graded["missed"]
 
         prev_best = state.get("best_score", SCORE_MIN)
         state["best_score"] = max(prev_best, score)
@@ -344,10 +352,8 @@ class SmartContractAuditEnv:
         prev_score = state["current_score"]
         delta = score - prev_score
 
-        # Reward value: always clamped, never 0.0 or 1.0
-        if delta > 0:
-            reward_value = clamp(score)
-        elif state["step_count"] == 1:
+        # Reward value: always clamped
+        if delta > 0 or state["step_count"] == 1:
             reward_value = clamp(score)
         else:
             reward_value = clamp(max(SCORE_MIN, score - 0.05))
@@ -392,15 +398,15 @@ class SmartContractAuditEnv:
             task_id=task_id,
             task_description=contract["description"],
             contract_code=contract["code"],
-            current_score=score,
+            current_score=clamp(score),
             last_feedback=feedback,
             step_count=state["step_count"],
             max_steps=5
         )
 
         reward = RewardInfo(
-            value=round(reward_value, 4),
-            cumulative=round(score, 4),
+            value=clamp(reward_value),
+            cumulative=clamp(score),
             message=feedback,
             true_positives=true_positives,
             false_positives=false_positives,
@@ -430,7 +436,7 @@ class SmartContractAuditEnv:
             task_id=task_id,
             task_description=contract["description"],
             contract_code=contract["code"],
-            current_score=s["current_score"],
+            current_score=clamp(s["current_score"]),
             last_feedback=s["last_feedback"],
             step_count=s["step_count"],
             max_steps=5
