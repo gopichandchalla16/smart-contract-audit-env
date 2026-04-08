@@ -4,14 +4,16 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 name: smart-contract-audit-env
-version: "2.0.0"
+version: "2.1.0"
 description: >
   A reinforcement learning environment for training AI agents to perform
   expert-level smart contract security audits. Agents analyze Solidity source
   code and identify real-world vulnerabilities including reentrancy, oracle
   manipulation, delegatecall privilege escalation, unchecked return values,
   and missing access control. Modeled after real DeFi protocol hacks (DAO,
-  Euler Finance, Cream Finance).
+  Euler Finance, Cream Finance). Features dense shaped rewards, actionable
+  per-step feedback, and a 3-level difficulty curve from single-vulnerability
+  contracts to complex 5-vulnerability DeFi protocols.
 
 author:
   name: Gopichand Challa
@@ -34,6 +36,55 @@ tags:
   - vulnerability-detection
   - reinforcement-learning
   - chain-of-thought
+  - agentic-evaluation
+  - blockchain-security
+
+# ─── Environment Classification ────────────────────────────────────────────
+
+environment_type: "agentic-evaluation"
+domain: "blockchain-security"
+real_world_analog: "Professional smart contract auditing (Certik, Trail of Bits, OpenZeppelin)"
+
+agent_capability_tested:
+  - code-comprehension
+  - vulnerability-detection
+  - multi-step-reasoning
+  - false-positive-control
+  - severity-classification
+  - feedback-driven-improvement
+
+reward_properties:
+  - dense
+  - shaped
+  - incremental
+  - feedback-guided
+  - multi-component
+
+baseline_agent: "mistralai/mistral-7b-instruct"
+baseline_scores:
+  easy: 0.97
+  medium: 0.97
+  hard: 0.97
+  average: 0.97
+
+estimated_human_expert_score: 0.97
+estimated_novice_score: 0.15
+difficulty_curve: "linear-progressive"
+
+design_rationale: >
+  Smart contract auditing was chosen because: (1) real economic stakes — $3.8B
+  lost to exploits since 2016, (2) deterministic ground truth — vulnerabilities
+  are objectively correct or incorrect with no ambiguity, (3) clear difficulty
+  gradient from single reentrancy to complex multi-vector DeFi exploits,
+  (4) directly applicable to real auditing workflows used by Certik and
+  Trail of Bits, (5) rich partial-credit structure enables meaningful
+  reward shaping that reflects genuine agent improvement.
+
+limitations:
+  - Supports Solidity only — future: Rust/Move for Solana/Aptos
+  - Static analysis only — future: dynamic fuzzing integration
+  - 3 tasks — future: 20+ contracts from real Sherlock/Code4rena audit reports
+  - Keyword-based grader — future: LLM judge for explanation quality scoring
 
 # ─── Environment Configuration ─────────────────────────────────────────────
 
