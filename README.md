@@ -225,4 +225,3 @@ Built for the **Meta OpenEnv Hackathon (Scaler × Meta PyTorch)** — April 2026
 
 ---
 
-*MIT License — see [LICENSE](LICENSE)*
