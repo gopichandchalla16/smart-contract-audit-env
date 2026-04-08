@@ -55,7 +55,7 @@ def fmt(v) -> str:
     """Format score for stdout — guaranteed never '0.00' or '1.00'."""
     c = clamp(v)
     # Use 4 decimal places in stdout to avoid rounding to 0.00 or 1.00
-    s = f"{c:.4f}"
+    s = f"{c:.2f}"
     return s
 
 # Log helpers — exact START/STEP/END spec
@@ -332,3 +332,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
