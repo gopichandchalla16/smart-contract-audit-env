@@ -1,6 +1,6 @@
 """
 Smart Contract Audit Environment — Elite Multi-Step Chain-of-Thought Agent
-Meta OpenEnv Hackathon | Submission #21+
+Meta OpenEnv Hackathon | Submission #23
 
 OUTPUT FORMAT (mandatory):
 [START] task=<task_name> env=<benchmark> model=<model_name>
@@ -29,12 +29,11 @@ def fmt(v) -> str:
     if s == "1.00": return "0.99"
     return s
 
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/novita/v3/openai")
-MODEL_NAME   = os.getenv("MODEL_NAME",   "mistralai/mistral-7b-instruct")
-HF_TOKEN     = os.getenv("HF_TOKEN")
-if HF_TOKEN is None:
-    raise ValueError("HF_TOKEN environment variable is required")
-API_KEY = os.environ.get("API_KEY") or HF_TOKEN
+# CRITICAL: Use validator-injected API_BASE_URL and API_KEY (LiteLLM proxy)
+# DO NOT fall back to HF_TOKEN or any other provider
+API_BASE_URL = os.environ["API_BASE_URL"]
+API_KEY      = os.environ["API_KEY"]
+MODEL_NAME   = os.getenv("MODEL_NAME", "mistralai/mistral-7b-instruct")
 
 client    = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 ENV_URL   = os.getenv("ENV_URL", "https://gopichand0516-smart-contract-audit-env.hf.space")
