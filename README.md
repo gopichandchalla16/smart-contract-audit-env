@@ -15,8 +15,32 @@ pinned: false
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)](https://www.python.org)
 [![License](https://img.shields.io/badge/License-MIT-lightgrey)](LICENSE)
 [![Phase 2](https://img.shields.io/badge/Phase%202-Passing%200.97-brightgreen)](https://huggingface.co/spaces/Gopichand0516/smart-contract-audit-env)
+[![GRPO Training](https://img.shields.io/badge/GRPO-45x%20Improvement-orange)](https://colab.research.google.com/drive/1TPfiFJC9rGpS8ZBETGL5XSUXf-Xltsd6?usp=drive_link)
 
 > **Meta OpenEnv Hackathon (Scaler × Meta PyTorch)** — Production-grade reinforcement learning environment for automated smart contract security auditing.
+
+---
+
+## 🔗 Submission Links
+
+| Resource | Link |
+|---|---|
+| 🤗 **HF Space (Environment)** | https://huggingface.co/spaces/Gopichand0516/smart-contract-audit-env |
+| 📓 **Colab Training Notebook** | https://colab.research.google.com/drive/1TPfiFJC9rGpS8ZBETGL5XSUXf-Xltsd6?usp=drive_link |
+| 💻 **GitHub Repository** | https://github.com/gopichandchalla16/smart-contract-audit-env |
+| 📝 **Blog Post** | https://github.com/gopichandchalla16/smart-contract-audit-env/blob/main/BLOG.md |
+
+---
+
+## 📊 Training Results (GRPO + Unsloth + TRL)
+
+| Metric | Value |
+|---|---|
+| Baseline reward (before training) | 0.04 |
+| Peak reward (Step 10) | **1.825** |
+| **Total Improvement** | **🔥 45x from baseline** |
+| Training steps | 20 |
+| Model | Qwen2.5-3B-Instruct |
 
 ---
 
@@ -257,6 +281,9 @@ smart-contract-audit-env/
 ├── openenv.yaml                          # Environment metadata
 ├── requirements.txt                      # Python dependencies
 ├── Dockerfile                            # Container build
+├── BLOG.md                               # Hackathon blog post
+├── training/
+│   └── Smart_Contract_Audit_GRPO_Training.ipynb  # Training notebook
 └── server/
     ├── app.py                            # FastAPI routes
     └── smart_contract_audit_env_environment.py  # Env + grader
