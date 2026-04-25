@@ -11,7 +11,6 @@
 
 ## 📊 Training Results — 10.9× Reward Improvement
 
-![GRPO Reward Curve](https://raw.githubusercontent.com/gopichandchalla16/smart-contract-audit-env/main/training/reward_curve.jpg)
 
 | Metric | Value |
 |--------|-------|
