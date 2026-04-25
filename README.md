@@ -1,185 +1,142 @@
----
-title: Smart Contract Audit Env
-emoji: 🔐
-colorFrom: green
-colorTo: blue
-sdk: docker
-pinned: false
----
+# 🔐 Smart Contract Audit Agent — GRPO + RL Training
 
-# 🔐 Smart Contract Audit Environment + GRPO RL Training
+[![Model on HF](https://img.shields.io/badge/🤗%20Model-Gopichand0516%2Fsmart--contract--audit--qwen--grpo-blue)](https://huggingface.co/Gopichand0516/smart-contract-audit-qwen-grpo)
+[![Demo Space](https://img.shields.io/badge/🤗%20Demo-smart--contract--auditor-green)](https://huggingface.co/spaces/Gopichand0516/smart-contract-auditor)
+[![Hackathon](https://img.shields.io/badge/Meta%20PyTorch-OpenEnv%20Hackathon-orange)](https://github.com/gopichandchalla16/smart-contract-audit-env)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
-[![HF Space](https://img.shields.io/badge/🤗%20HuggingFace-Space-yellow)](https://huggingface.co/spaces/Gopichand0516/smart-contract-audit-env)
-[![Docker](https://img.shields.io/badge/Docker-Enabled-blue?logo=docker)](https://github.com/gopichandchalla16/smart-contract-audit-env/blob/main/Dockerfile)
-[![OpenEnv](https://img.shields.io/badge/OpenEnv-Compatible-green)](https://github.com/gopichandchalla16/smart-contract-audit-env/blob/main/openenv.yaml)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)](https://www.python.org)
-[![License](https://img.shields.io/badge/License-MIT-lightgrey)](LICENSE)
-[![GRPO Training](https://img.shields.io/badge/GRPO-10.9x%20Improvement-orange)](https://huggingface.co/Gopichand0516/smart-contract-audit-qwen-grpo)
-[![Model](https://img.shields.io/badge/🤗%20Model-Qwen2.5--3B--GRPO-blue)](https://huggingface.co/Gopichand0516/smart-contract-audit-qwen-grpo)
-
-> **Meta OpenEnv Hackathon (Scaler × Meta PyTorch)** — Production-grade reinforcement learning environment for automated smart contract security auditing. Trained with GRPO + QLoRA achieving **10.9× reward improvement** over 200 steps.
+> Fine-tuned **Qwen2.5-1.5B-Instruct** using **GRPO (Group Relative Policy Optimization) + QLoRA** reinforcement learning to detect Solidity smart contract vulnerabilities. Trained for 200 steps (~85 minutes) on a free T4 GPU — achieving a **10.9× reward improvement** from baseline 0.030 → final 0.329.
 
 ---
 
-## 🔗 Submission Links
+## 📊 Training Results — 10.9× Reward Improvement
 
-| Resource | Link |
-|---|---|
-| 🤗 **HF Space (Environment)** | https://huggingface.co/spaces/Gopichand0516/smart-contract-audit-env |
-| 🤖 **Trained GRPO Model** | https://huggingface.co/Gopichand0516/smart-contract-audit-qwen-grpo |
-| 📓 **Colab Training Notebook** | https://colab.research.google.com/drive/1TPfiFJC9rGpS8ZBETGL5XSUXf-Xltsd6?usp=drive_link |
-| 💻 **GitHub Repository** | https://github.com/gopichandchalla16/smart-contract-audit-env |
-| 📝 **Blog Post** | https://github.com/gopichandchalla16/smart-contract-audit-env/blob/main/BLOG.md |
-
----
-
-## 📊 GRPO Training Results — 10.9× Reward Improvement
-
-The agent was trained using **GRPO + QLoRA** on `Qwen2.5-3B-Instruct` for **200 steps** (~85 minutes on T4 GPU).
-
-![Reward Curve](https://raw.githubusercontent.com/gopichandchalla16/smart-contract-audit-env/main/training/reward_curve.png)
+![GRPO Reward Curve](https://raw.githubusercontent.com/gopichandchalla16/smart-contract-audit-env/main/training/reward_curve.png)
 
 | Metric | Value |
-|---|---|
-| **Baseline reward** (Step 0) | 0.030 |
-| **Final reward** (Step 200) | **0.329** |
-| **Total Improvement** | **🔥 10.9× from baseline** |
-| Training steps | 200 |
-| Training time | ~85 minutes (T4 GPU) |
-| Model | Qwen2.5-3B-Instruct + QLoRA |
-| Trainable parameters | 18.4M / 1.03B (1.78%) |
-| GRPO generations per prompt | 4 |
-| KL Divergence (final) | ~0.051 (stable) |
+|--------|-------|
+| **Baseline Reward** (Step 10) | 0.030 |
+| **Final Reward** (Step 200) | **0.329** |
+| **Improvement** | **🔥 10.9×** |
+| **Peak Reward** (Step 150) | 0.284 |
+| **Training Steps** | 200 |
+| **Training Time** | ~85.7 min (T4 GPU) |
+| **Base Model** | Qwen2.5-1.5B-Instruct |
+| **Trainable Params** | 18.4M / 1.03B (1.78%) |
 
-### Reward Progression (Step-by-Step)
+### Step-by-Step Reward Progression (Real Logged Data)
 
 | Step | Reward | KL Divergence |
 |------|--------|---------------|
-| 10 | 0.030 | 0.000040 |
-| 50 | 0.101 | 0.019485 |
+| 10 | 0.030 | 0.000017 |
+| 20 | 0.041 | 0.000019 |
+| 30 | 0.037 | 0.000234 |
+| 40 | 0.105 | 0.000908 |
+| 50 | 0.101 | 0.001202 |
+| 60 | 0.135 | 0.002177 |
+| 70 | 0.095 | 0.004207 |
+| 80 | 0.148 | 0.009147 |
+| 90 | 0.179 | 0.022168 |
 | 100 | 0.187 | 0.030487 |
-| 150 | 0.267 | 0.038510 |
-| 200 | **0.329** | 0.051547 |
-
-### Reward Components
-
-```
-Total Reward = Environment Accuracy  (0.0 – 1.0)
-             + Format Quality        (0.0 – 0.3)   ← VULNERABILITY, SEVERITY, LOCATION, IMPACT, FIX
-             + Coverage Score        (0.0 – 0.2)   ← mentions impact + remediation
-             - False Negative Penalty (−0.2)        ← claiming "no vulnerability" when one exists
-             ─────────────────────────────────────
-Max Possible Reward: 1.5
-```
+| 110 | 0.194 | 0.053824 |
+| 120 | 0.185 | 0.054709 |
+| 130 | 0.217 | 0.020788 |
+| 140 | 0.249 | 0.028111 |
+| 150 | **0.284** | 0.015059 |
+| 160 | 0.247 | 0.021848 |
+| 170 | 0.236 | 0.014134 |
+| 180 | 0.215 | 0.025343 |
+| 190 | 0.232 | 0.021611 |
+| **200** | **0.329** | 0.008714 |
 
 ---
 
-## 🎯 Motivation
+## 🎯 What It Detects
 
-**$3.8 billion was lost to smart contract exploits since 2016.** Reentrancy alone drained **$60M in the DAO hack**. Professional audits cost $20,000–$100,000 per engagement and take weeks. Meanwhile, DeFi protocols launch daily with unaudited code.
+The RL-trained agent detects real Solidity vulnerabilities:
 
-This environment trains AI agents to perform **expert-level security audits automatically** — detecting reentrancy, oracle manipulation, privilege escalation, and more — at near-zero cost.
+- **Reentrancy attacks** — state updated after external call (e.g. the classic drain-the-contract bug)
+- **Missing access control** — functions callable by anyone with no `onlyOwner` check
+- **Integer overflow/underflow** — unchecked arithmetic pre-Solidity 0.8.0
+- **Oracle manipulation** — price feeds that can be flash-loan attacked
+- **tx.origin misuse** — phishing-vulnerable authentication
+- **Unchecked external call return values** — silent failure on `.call()`
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    OpenEnv Agent Loop                           │
-│                                                                 │
-│  ┌──────────┐   /reset    ┌──────────────────────────────────┐  │
-│  │ inference│ ──────────► │     FastAPI Server (HF Space)    │  │
-│  │   .py    │             │  ┌────────────────────────────┐  │  │
-│  │          │   Observation│  │  SmartContractAuditEnv     │  │  │
-│  │ Phase 1  │ ◄──────────  │  │                            │  │  │
-│  │ Enumerate│             │  │  ┌──────────────────────┐  │  │  │
-│  │          │             │  │  │  CONTRACTS dict       │  │  │  │
-│  │ Phase 2  │   /step     │  │  │  easy / medium / hard │  │  │  │
-│  │ Patterns │ ──────────► │  │  └──────────────────────┘  │  │  │
-│  │          │             │  │                            │  │  │
-│  │ Phase 3  │   Reward    │  │  _grade() → sophisticated  │  │  │
-│  │ Report   │ ◄──────────  │  │  scorer                   │  │  │
-│  │ + Merge  │             │  └────────────────────────────┘  │  │
-│  └──────────┘             └──────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+Base Model:     Qwen2.5-1.5B-Instruct (4-bit QLoRA via Unsloth)
+RL Algorithm:   GRPO (Group Relative Policy Optimization)
+Adapter:        LoRA r=16, α=16 — 1.78% params trainable
+Environment:    FastAPI HF Space (reset/step OpenEnv API)
+Reward Fn:      Environment accuracy + format + coverage − hallucination penalty
 ```
 
----
-
-## 🧠 GRPO Training Setup
+### Reward Function (Multi-Component)
 
 ```python
-# Model: Qwen2.5-3B-Instruct (4-bit quantized)
-# LoRA: r=16, alpha=16, target: q/k/v/o/gate/up/down projections
-# Trainable: 1.78% of parameters (18.4M / 1.03B)
+total_reward = (
+    env_reward      # 0.0–1.0  — Did you catch the real vulnerability?
+  + format_score   # 0.0–0.3  — Is the report properly structured?
+  + coverage_score # 0.0–0.2  — Did you explain IMPACT + FIX?
+  + penalty        # -0.2     — Penalty for claiming NO_VULNERABILITY when one exists
+)
+# Clipped to [0.0, 1.5]
+```
 
-training_config = GRPOConfig(
-    output_dir="./smart-contract-audit-rl",
+### GRPO Training Config
+
+```python
+GRPOConfig(
+    max_steps=200,
     learning_rate=5e-6,
     per_device_train_batch_size=1,
-    gradient_accumulation_steps=4,
-    max_steps=200,
-    num_generations=4,        # GRPO samples 4 responses per prompt
+    gradient_accumulation_steps=4,   # effective batch = 4
+    num_generations=4,               # sample 4 responses per prompt
     max_completion_length=350,
     temperature=0.9,
-    optim="adamw_8bit",       # memory-efficient
+    optim="adamw_8bit",
 )
 ```
 
-**How GRPO Works:**
-1. Model generates **4 different audit reports** for the same Solidity contract
-2. Each gets a reward score from the live environment
-3. Model updates to make **high-reward responses more likely**
-4. Repeat 200 times → model gets better at auditing
-
 ---
 
-## 📐 Environment Specification
+## 🚀 Quick Start
 
-### Observation Space
+### Run the Demo
 
-| Field | Type | Description |
-|---|---|---|
-| `task_id` | `str` | Task identifier: `"easy"`, `"medium"`, `"hard"` |
-| `task_description` | `str` | Natural language audit brief |
-| `contract_code` | `str` | Full Solidity source code to audit |
-| `current_score` | `float ∈ (0,1)` | Running score from last step |
-| `last_feedback` | `str` | Grader hints guiding next action |
-| `step_count` | `int` | Steps taken so far |
-| `max_steps` | `int` | Maximum steps allowed (5) |
+👉 **[Try the live Gradio demo on HuggingFace Spaces](https://huggingface.co/spaces/Gopichand0516/smart-contract-auditor)**
 
-### Action Space
+### Use the Model
 
-| Field | Type | Description |
-|---|---|---|
-| `findings` | `List[str]` | Vulnerability descriptions (one per finding) |
-| `severity` | `List[str]` | Severity per finding: `"high"`, `"medium"`, `"low"` |
-| `vulnerable_lines` | `List[int]` | Source code line numbers where vulns appear |
-| `explanation` | `str` | Technical explanation with attack vector + fix |
+```python
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
----
+model = AutoModelForCausalLM.from_pretrained(
+    "Gopichand0516/smart-contract-audit-qwen-grpo"
+)
+tokenizer = AutoTokenizer.from_pretrained(
+    "Gopichand0516/smart-contract-audit-qwen-grpo"
+)
 
-## 📋 Task Difficulty Table
+contract = """
+pragma solidity ^0.8.0;
+contract Vulnerable {
+    mapping(address => uint) public balances;
+    function withdraw() public {
+        uint amount = balances[msg.sender];
+        (bool ok,) = msg.sender.call{value: amount}("");
+        balances[msg.sender] = 0;  // state updated AFTER external call!
+    }
+}
+"""
 
-| Task | Difficulty | Contract | Vulnerabilities | Max Score | Real-World Analog |
-|---|---|---|---|---|---|
-| `easy` | ⭐ Easy | `VulnerableBank` | Reentrancy (1) | 0.97 | DAO Hack 2016 |
-| `medium` | ⭐⭐ Medium | `DeFiVault` | Reentrancy + Missing AC + tx.origin (3) | 0.97 | Parity Wallet Hack |
-| `hard` | ⭐⭐⭐ Hard | `RiskyLend` | Reentrancy + Oracle Manip + Delegatecall + Unchecked Call + Missing AC (5) | 0.97 | Euler Finance style |
-
----
-
-## 🚀 Running Locally
-
-```bash
-git clone https://github.com/gopichandchalla16/smart-contract-audit-env.git
-cd smart-contract-audit-env
-pip install -r requirements.txt
-export HF_TOKEN=hf_your_token_here
-export ENV_URL=http://localhost:7860
-uvicorn server.app:app --host 0.0.0.0 --port 7860
-python inference.py
+prompt = f"Audit this Solidity contract:\n{contract}"
+inputs = tokenizer(prompt, return_tensors="pt")
+output = model.generate(**inputs, max_new_tokens=300)
+print(tokenizer.decode(output[0], skip_special_tokens=True))
 ```
 
 ---
@@ -188,35 +145,35 @@ python inference.py
 
 ```
 smart-contract-audit-env/
-├── inference.py                          # 3-phase CoT agent
-├── models.py                             # Pydantic data models
-├── main.py                               # Entry point
-├── openenv.yaml                          # Environment metadata
-├── requirements.txt                      # Python dependencies
-├── Dockerfile                            # Container build
-├── BLOG.md                               # Hackathon blog post
+├── server/              # FastAPI OpenEnv environment
 ├── training/
-│   ├── Smart_Contract_Audit_GRPO_Training.ipynb  # Full training notebook
-│   └── reward_curve.png                          # GRPO reward progression chart
-└── server/
-    ├── app.py                            # FastAPI routes
-    └── smart_contract_audit_env_environment.py  # Env + grader
+│   ├── Smart_Contract_Audit_GRPO_Training.ipynb  # Full Colab notebook
+│   └── reward_curve.png                          # Training reward chart
+├── BLOG.md              # Full technical blog post
+├── inference.py         # Inference helper
+├── client.py            # Environment client
+├── openenv.yaml         # OpenEnv spec
+└── README.md
 ```
 
 ---
 
-## 🔮 Future Work
+## 🔗 Links
 
-- Extended vulnerability coverage (15+ CWE-mapped types)
-- LLM-graded explanation quality scoring
-- Multi-file contract auditing (Hardhat/Foundry projects)
-- Competitive public leaderboard on HF Spaces
-- Multi-language support (Rust/Move for Solana/Aptos)
+| Resource | Link |
+|----------|------|
+| 🤗 Trained Model | [Gopichand0516/smart-contract-audit-qwen-grpo](https://huggingface.co/Gopichand0516/smart-contract-audit-qwen-grpo) |
+| 🤗 Live Demo | [Gopichand0516/smart-contract-auditor](https://huggingface.co/spaces/Gopichand0516/smart-contract-auditor) |
+| 📓 Colab Notebook | [Open in Colab](https://colab.research.google.com/drive/1TPfiFJC9rGpS8ZBETGL5XSUXf-Xltsd6?usp=drive_link) |
+| 📝 Blog Post | [BLOG.md](./BLOG.md) |
 
 ---
 
 ## 👤 Author
 
-**Gopichand Challa** — [GitHub](https://github.com/gopichandchalla16) · [HuggingFace](https://huggingface.co/Gopichand0516) · [@GopichandAI](https://twitter.com/GopichandAI)
+**Gopichand Challa** — CSE Graduate, Web3 + AI Builder
 
-Built for the **Meta OpenEnv Hackathon (Scaler × Meta PyTorch)** — April 2026
+[![GitHub](https://img.shields.io/badge/GitHub-gopichandchalla16-black?logo=github)](https://github.com/gopichandchalla16)
+[![HuggingFace](https://img.shields.io/badge/🤗-Gopichand0516-yellow)](https://huggingface.co/Gopichand0516)
+
+Built for the **Meta PyTorch OpenEnv Community Hackathon** — April 2026 🎉
