@@ -11,7 +11,7 @@
 
 ## 📊 Training Results — 10.9× Reward Improvement
 
-![GRPO Reward Curve](https://raw.githubusercontent.com/gopichandchalla16/smart-contract-audit-env/main/training/reward_curve.png)
+![GRPO Reward Curve](https://raw.githubusercontent.com/gopichandchalla16/smart-contract-audit-env/main/training/reward_curve.jpg)
 
 | Metric | Value |
 |--------|-------|
@@ -26,28 +26,28 @@
 
 ### Step-by-Step Reward Progression (Real Logged Data)
 
-| Step | Reward | KL Divergence |
-|------|--------|---------------|
-| 10 | 0.030 | 0.000017 |
-| 20 | 0.041 | 0.000019 |
-| 30 | 0.037 | 0.000234 |
-| 40 | 0.105 | 0.000908 |
-| 50 | 0.101 | 0.001202 |
-| 60 | 0.135 | 0.002177 |
-| 70 | 0.095 | 0.004207 |
-| 80 | 0.148 | 0.009147 |
-| 90 | 0.179 | 0.022168 |
-| 100 | 0.187 | 0.030487 |
-| 110 | 0.194 | 0.053824 |
-| 120 | 0.185 | 0.054709 |
-| 130 | 0.217 | 0.020788 |
-| 140 | 0.249 | 0.028111 |
-| 150 | **0.284** | 0.015059 |
-| 160 | 0.247 | 0.021848 |
-| 170 | 0.236 | 0.014134 |
-| 180 | 0.215 | 0.025343 |
-| 190 | 0.232 | 0.021611 |
-| **200** | **0.329** | 0.008714 |
+| Step | Reward | KL Divergence | Training Loss |
+|------|--------|---------------|---------------|
+| 10 | 0.041 | 0.000017 | 0.000000 |
+| 20 | 0.051 | 0.000019 | 0.000000 |
+| 30 | 0.075 | 0.000234 | 0.000000 |
+| 40 | 0.031 | 0.000908 | 0.000001 |
+| 50 | 0.031 | 0.001202 | 0.000001 |
+| 60 | 0.050 | 0.002177 | 0.000002 |
+| 70 | 0.072 | 0.004207 | 0.000004 |
+| 80 | 0.119 | 0.009147 | 0.000009 |
+| 90 | 0.112 | 0.022168 | 0.000022 |
+| 100 | 0.125 | 0.030487 | 0.000030 |
+| 110 | 0.157 | 0.053824 | 0.000054 |
+| 120 | 0.194 | 0.054709 | 0.000055 |
+| 130 | 0.227 | 0.020788 | 0.000021 |
+| 140 | 0.272 | 0.028111 | 0.000028 |
+| 150 | **0.267** | 0.015059 | 0.000015 |
+| 160 | 0.246 | 0.021848 | 0.000022 |
+| 170 | 0.237 | 0.014134 | 0.000014 |
+| 180 | 0.245 | 0.025343 | 0.000025 |
+| 190 | 0.309 | 0.021611 | 0.000022 |
+| **200** | **0.298** | **0.008714** | **0.000009** |
 
 ---
 
@@ -147,8 +147,8 @@ print(tokenizer.decode(output[0], skip_special_tokens=True))
 smart-contract-audit-env/
 ├── server/              # FastAPI OpenEnv environment
 ├── training/
-│   ├── Smart_Contract_Audit_GRPO_Training.ipynb  # Full Colab notebook
-│   └── reward_curve.png                          # Training reward chart
+│   ├── Smart_Contract_Audit_GRPO_Training.ipynb  ← Full Colab notebook (200 steps)
+│   └── reward_curve.jpg                          ← Training reward chart
 ├── BLOG.md              # Full technical blog post
 ├── inference.py         # Inference helper
 ├── client.py            # Environment client
