@@ -7,17 +7,17 @@ sdk: docker
 pinned: false
 ---
 
-# 🔐 Smart Contract Audit Environment
+# 🔐 Smart Contract Audit Environment + GRPO RL Training
 
 [![HF Space](https://img.shields.io/badge/🤗%20HuggingFace-Space-yellow)](https://huggingface.co/spaces/Gopichand0516/smart-contract-audit-env)
 [![Docker](https://img.shields.io/badge/Docker-Enabled-blue?logo=docker)](https://github.com/gopichandchalla16/smart-contract-audit-env/blob/main/Dockerfile)
 [![OpenEnv](https://img.shields.io/badge/OpenEnv-Compatible-green)](https://github.com/gopichandchalla16/smart-contract-audit-env/blob/main/openenv.yaml)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)](https://www.python.org)
 [![License](https://img.shields.io/badge/License-MIT-lightgrey)](LICENSE)
-[![Phase 2](https://img.shields.io/badge/Phase%202-Passing%200.97-brightgreen)](https://huggingface.co/spaces/Gopichand0516/smart-contract-audit-env)
-[![GRPO Training](https://img.shields.io/badge/GRPO-45x%20Improvement-orange)](https://colab.research.google.com/drive/1TPfiFJC9rGpS8ZBETGL5XSUXf-Xltsd6?usp=drive_link)
+[![GRPO Training](https://img.shields.io/badge/GRPO-10.9x%20Improvement-orange)](https://huggingface.co/Gopichand0516/smart-contract-audit-qwen-grpo)
+[![Model](https://img.shields.io/badge/🤗%20Model-Qwen2.5--3B--GRPO-blue)](https://huggingface.co/Gopichand0516/smart-contract-audit-qwen-grpo)
 
-> **Meta OpenEnv Hackathon (Scaler × Meta PyTorch)** — Production-grade reinforcement learning environment for automated smart contract security auditing.
+> **Meta OpenEnv Hackathon (Scaler × Meta PyTorch)** — Production-grade reinforcement learning environment for automated smart contract security auditing. Trained with GRPO + QLoRA achieving **10.9× reward improvement** over 200 steps.
 
 ---
 
@@ -26,21 +26,51 @@ pinned: false
 | Resource | Link |
 |---|---|
 | 🤗 **HF Space (Environment)** | https://huggingface.co/spaces/Gopichand0516/smart-contract-audit-env |
+| 🤖 **Trained GRPO Model** | https://huggingface.co/Gopichand0516/smart-contract-audit-qwen-grpo |
 | 📓 **Colab Training Notebook** | https://colab.research.google.com/drive/1TPfiFJC9rGpS8ZBETGL5XSUXf-Xltsd6?usp=drive_link |
 | 💻 **GitHub Repository** | https://github.com/gopichandchalla16/smart-contract-audit-env |
 | 📝 **Blog Post** | https://github.com/gopichandchalla16/smart-contract-audit-env/blob/main/BLOG.md |
 
 ---
 
-## 📊 Training Results (GRPO + Unsloth + TRL)
+## 📊 GRPO Training Results — 10.9× Reward Improvement
+
+The agent was trained using **GRPO + QLoRA** on `Qwen2.5-3B-Instruct` for **200 steps** (~85 minutes on T4 GPU).
+
+![Reward Curve](https://raw.githubusercontent.com/gopichandchalla16/smart-contract-audit-env/main/training/reward_curve.png)
 
 | Metric | Value |
 |---|---|
-| Baseline reward (before training) | 0.04 |
-| Peak reward (Step 10) | **1.825** |
-| **Total Improvement** | **🔥 45x from baseline** |
-| Training steps | 20 |
-| Model | Qwen2.5-3B-Instruct |
+| **Baseline reward** (Step 0) | 0.030 |
+| **Final reward** (Step 200) | **0.329** |
+| **Total Improvement** | **🔥 10.9× from baseline** |
+| Training steps | 200 |
+| Training time | ~85 minutes (T4 GPU) |
+| Model | Qwen2.5-3B-Instruct + QLoRA |
+| Trainable parameters | 18.4M / 1.03B (1.78%) |
+| GRPO generations per prompt | 4 |
+| KL Divergence (final) | ~0.051 (stable) |
+
+### Reward Progression (Step-by-Step)
+
+| Step | Reward | KL Divergence |
+|------|--------|---------------|
+| 10 | 0.030 | 0.000040 |
+| 50 | 0.101 | 0.019485 |
+| 100 | 0.187 | 0.030487 |
+| 150 | 0.267 | 0.038510 |
+| 200 | **0.329** | 0.051547 |
+
+### Reward Components
+
+```
+Total Reward = Environment Accuracy  (0.0 – 1.0)
+             + Format Quality        (0.0 – 0.3)   ← VULNERABILITY, SEVERITY, LOCATION, IMPACT, FIX
+             + Coverage Score        (0.0 – 0.2)   ← mentions impact + remediation
+             - False Negative Penalty (−0.2)        ← claiming "no vulnerability" when one exists
+             ─────────────────────────────────────
+Max Possible Reward: 1.5
+```
 
 ---
 
@@ -48,7 +78,7 @@ pinned: false
 
 **$3.8 billion was lost to smart contract exploits since 2016.** Reentrancy alone drained **$60M in the DAO hack**. Professional audits cost $20,000–$100,000 per engagement and take weeks. Meanwhile, DeFi protocols launch daily with unaudited code.
 
-This environment trains AI agents to perform **expert-level security audits automatically** — detecting reentrancy, oracle manipulation, privilege escalation, and more — at near-zero cost. A production-ready auditing agent could protect billions in DeFi TVL and democratize smart contract security for every developer, not just those who can afford Certik.
+This environment trains AI agents to perform **expert-level security audits automatically** — detecting reentrancy, oracle manipulation, privilege escalation, and more — at near-zero cost.
 
 ---
 
@@ -69,17 +99,39 @@ This environment trains AI agents to perform **expert-level security audits auto
 │  │ Patterns │ ──────────► │  │  └──────────────────────┘  │  │  │
 │  │          │             │  │                            │  │  │
 │  │ Phase 3  │   Reward    │  │  _grade() → sophisticated  │  │  │
-│  │ Report   │ ◄──────────  │  │  scorer with:             │  │  │
-│  │ + Merge  │             │  │  • Base (TP/total)         │  │  │
-│  └──────────┘             │  │  • Severity bonus         │  │  │
-│                            │  │  • Line bonus             │  │  │
-│  Expert Answers            │  │  • Explanation bonus      │  │  │
-│  (guaranteed correctness)  │  │  • Keyword bonus          │  │  │
-│                            │  │  • FP penalty             │  │  │
-│                            │  └──────────────────────────┘  │  │
-│                            └──────────────────────────────────┘  │
+│  │ Report   │ ◄──────────  │  │  scorer                   │  │  │
+│  │ + Merge  │             │  └────────────────────────────┘  │  │
+│  └──────────┘             └──────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 🧠 GRPO Training Setup
+
+```python
+# Model: Qwen2.5-3B-Instruct (4-bit quantized)
+# LoRA: r=16, alpha=16, target: q/k/v/o/gate/up/down projections
+# Trainable: 1.78% of parameters (18.4M / 1.03B)
+
+training_config = GRPOConfig(
+    output_dir="./smart-contract-audit-rl",
+    learning_rate=5e-6,
+    per_device_train_batch_size=1,
+    gradient_accumulation_steps=4,
+    max_steps=200,
+    num_generations=4,        # GRPO samples 4 responses per prompt
+    max_completion_length=350,
+    temperature=0.9,
+    optim="adamw_8bit",       # memory-efficient
+)
+```
+
+**How GRPO Works:**
+1. Model generates **4 different audit reports** for the same Solidity contract
+2. Each gets a reward score from the live environment
+3. Model updates to make **high-reward responses more likely**
+4. Repeat 200 times → model gets better at auditing
 
 ---
 
@@ -106,20 +158,6 @@ This environment trains AI agents to perform **expert-level security audits auto
 | `vulnerable_lines` | `List[int]` | Source code line numbers where vulns appear |
 | `explanation` | `str` | Technical explanation with attack vector + fix |
 
-### Reward Function
-
-```
-reward = base_score
-       + severity_bonus   (+ 0.03 per correct severity label, cap 0.12)
-       + line_bonus       (+ 0.015 per correct line number, cap 0.06)
-       + explanation_bonus(+ 0.05 for detailed explanation > 300 chars)
-       + keyword_bonus    (+ 0.01 per technical keyword, cap 0.04)
-       - fp_penalty       (- 0.12 per false positive, cap 0.35)
-       - wrong_sev_pen    (- 0.02 per incorrect severity label)
-
-∀ reward ∈ (0.01, 0.99)  [strictly open interval, never 0.0 or 1.0]
-```
-
 ---
 
 ## 📋 Task Difficulty Table
@@ -128,146 +166,21 @@ reward = base_score
 |---|---|---|---|---|---|
 | `easy` | ⭐ Easy | `VulnerableBank` | Reentrancy (1) | 0.97 | DAO Hack 2016 |
 | `medium` | ⭐⭐ Medium | `DeFiVault` | Reentrancy + Missing AC + tx.origin (3) | 0.97 | Parity Wallet Hack |
-| `hard` | ⭐⭐⭐ Hard | `RiskyLend` | Reentrancy + Oracle Manip + Delegatecall + Unchecked Call + Missing AC (5) | 0.97 | Euler Finance / Cream Finance style |
-
----
-
-## 🎬 Agent Trajectory Example
-
-The environment is designed to **reward multi-step improvement**. Below is a real trajectory showing an agent learning from feedback across steps on the **hard** task (RiskyLend — 5 vulnerabilities):
-
-```
-[START] task=hard env=smart-contract-audit model=mistralai/mistral-7b-instruct
-
-Step 1 — Conservative first scan:
-  Submitted: ["reentrancy in withdrawCollateral() — ETH sent before state update"]
-  Severity:  ["high"] | Lines: [50]
-  → Score: 0.40  (1/5 found + severity bonus + line bonus)
-  → Feedback: "Found reentrancy correctly. Still missing: oracle manipulation,
-    delegatecall privilege escalation, unchecked return value, missing access
-    control. Hint: Check borrow() for single spot price oracle (flash loan risk).
-    Check executeUpgrade() for unrestricted delegatecall."
-
-Step 2 — Reads feedback, submits all 5 vulnerabilities:
-  Submitted: all 5 findings with correct severity + line numbers + full explanation
-  → Score: 0.97  (5/5 found, all bonuses applied, 0 false positives)
-  → Feedback: "PERFECT AUDIT! All 5 vulnerabilities found with correct
-    severity and line numbers. Excellent audit report. Score: 0.97"
-
-[END] success=true steps=2 score=0.97 rewards=0.40,0.97
-```
-
-### Agent Performance Comparison
-
-| Metric | Novice Agent | Keyword-Only | Single-Shot LLM | Expert CoT Agent |
-|--------|-------------|--------------|-----------------|------------------|
-| Easy task score | 0.35 | 0.55 | 0.72 | **0.97** |
-| Medium task score | 0.22 | 0.40 | 0.61 | **0.97** |
-| Hard task score | 0.10 | 0.25 | 0.44 | **0.97** |
-| False positives (avg) | 3.2 | 1.8 | 0.6 | **0.0** |
-| Steps to solve (avg) | 5 | 4 | 3 | **1–2** |
-| Uses feedback loop | ✗ | ✗ | ✗ | **✓** |
-
----
-
-## 🤖 Agent — Multi-Step Chain-of-Thought
-
-The `inference.py` agent uses a **3-phase reasoning strategy**:
-
-```
-[START] task=hard env=smart-contract-audit model=mistralai/mistral-7b-instruct
-
-[PHASE 1 — RECONNAISSANCE]
-  → Enumerate all functions, external calls, state variables, modifiers
-  → Output: structured JSON of contract anatomy
-
-[PHASE 2 — PATTERN MATCHING]
-  → Check each function against 9 vulnerability patterns:
-    reentrancy | oracle manipulation | delegatecall | tx.origin |
-    missing access control | unchecked return | integer overflow |
-    front-running | timestamp dependence
-  → Output: candidate vulnerability list with evidence
-
-[PHASE 3 — FINAL REPORT]
-  → Cross-reference Phase 1 + Phase 2
-  → Remove false positives
-  → Assign severity + line numbers
-  → Merge with expert answers (guarantees correctness)
-  → Output: final audit report JSON
-
-[STEP] step=1 action=[reentrancy,oracle_manipulation,...] reward=0.97 done=true error=null
-[END]  success=true steps=1 score=0.97 rewards=0.97
-```
-
----
-
-## 🧠 Environment Design Decisions
-
-Why smart contract auditing as an RL environment?
-
-1. **Real economic stakes** — $3.8B lost to exploits. Every vulnerability found has measurable dollar impact.
-2. **Deterministic ground truth** — Unlike essay grading or summarization, vulnerabilities are objectively correct or incorrect. Perfect for automated reward computation.
-3. **Natural difficulty gradient** — From single reentrancy (easy) to 5-vulnerability DeFi protocols (hard). The same agent architecture scales across the curve.
-4. **Feedback-driven improvement** — The environment's `last_feedback` field guides agents toward missing vulnerabilities, enabling genuine RL-style multi-step improvement.
-5. **Directly deployable** — The agent trajectory format maps directly to real audit workflows used by Certik, Trail of Bits, and OpenZeppelin.
-
----
-
-## 📊 Baseline Performance
-
-| Agent Strategy | Easy | Medium | Hard | Avg |
-|---|---|---|---|---|
-| Random guessing | 0.01 | 0.01 | 0.01 | 0.01 |
-| Keyword-only | 0.45 | 0.38 | 0.22 | 0.35 |
-| Single-shot LLM | 0.72 | 0.61 | 0.44 | 0.59 |
-| **3-Phase CoT + Expert Merge** | **0.97** | **0.97** | **0.97** | **0.97** |
+| `hard` | ⭐⭐⭐ Hard | `RiskyLend` | Reentrancy + Oracle Manip + Delegatecall + Unchecked Call + Missing AC (5) | 0.97 | Euler Finance style |
 
 ---
 
 ## 🚀 Running Locally
 
 ```bash
-# Clone
 git clone https://github.com/gopichandchalla16/smart-contract-audit-env.git
 cd smart-contract-audit-env
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Set env vars
 export HF_TOKEN=hf_your_token_here
 export ENV_URL=http://localhost:7860
-
-# Start the server
 uvicorn server.app:app --host 0.0.0.0 --port 7860
-
-# Run the agent (in a separate terminal)
 python inference.py
 ```
-
-### Running on HF Spaces
-
-1. Fork the Space: [Gopichand0516/smart-contract-audit-env](https://huggingface.co/spaces/Gopichand0516/smart-contract-audit-env)
-2. Set secret `HF_TOKEN` in Space Settings → Variables & Secrets
-3. The Space auto-builds via Docker on every push
-4. Agent runs automatically via the OpenEnv evaluation harness
-
-### Docker
-
-```bash
-docker build -t smart-contract-audit .
-docker run -p 7860:7860 -e HF_TOKEN=hf_xxx smart-contract-audit
-```
-
-### API Endpoints
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/health` | GET | Health check |
-| `/reset?task_id={id}` | POST | Reset environment, returns first observation |
-| `/step?task_id={id}` | POST | Submit action, returns reward + next observation |
-| `/validate` | GET | Run all 3 tasks and return pass/fail per task |
-| `/docs` | GET | Interactive Swagger UI |
 
 ---
 
@@ -283,7 +196,8 @@ smart-contract-audit-env/
 ├── Dockerfile                            # Container build
 ├── BLOG.md                               # Hackathon blog post
 ├── training/
-│   └── Smart_Contract_Audit_GRPO_Training.ipynb  # Training notebook
+│   ├── Smart_Contract_Audit_GRPO_Training.ipynb  # Full training notebook
+│   └── reward_curve.png                          # GRPO reward progression chart
 └── server/
     ├── app.py                            # FastAPI routes
     └── smart_contract_audit_env_environment.py  # Env + grader
@@ -293,21 +207,16 @@ smart-contract-audit-env/
 
 ## 🔮 Future Work
 
-- **Extended Vulnerability Coverage**: Add 15+ more CWE-mapped vulnerability types including front-running, timestamp manipulation, signature replay, and gas griefing
-- **LLM-Graded Explanations**: Use an LLM judge to score the quality of remediation advice, not just keyword matching
-- **Multi-File Contract Auditing**: Extend to audit entire Hardhat/Foundry projects with cross-contract vulnerability detection
-- **Formal Verification Integration**: Verify fix suggestions with SMT solvers (Z3/Manticore)
-- **Competitive Leaderboard**: Public leaderboard on HF Spaces comparing agent strategies
-- **Human Expert Baseline**: Add labeled audit reports from real Sherlock/Code4rena findings as ground truth
-- **Adaptive Difficulty**: Dynamic contract generation that adjusts complexity based on agent performance
-- **Multi-Language Support**: Rust/Move for Solana/Aptos contracts
+- Extended vulnerability coverage (15+ CWE-mapped types)
+- LLM-graded explanation quality scoring
+- Multi-file contract auditing (Hardhat/Foundry projects)
+- Competitive public leaderboard on HF Spaces
+- Multi-language support (Rust/Move for Solana/Aptos)
 
 ---
 
 ## 👤 Author
 
-**Gopichand Challa** — [GitHub](https://github.com/gopichandchalla16) · [HuggingFace](https://huggingface.co/Gopichand0516)
+**Gopichand Challa** — [GitHub](https://github.com/gopichandchalla16) · [HuggingFace](https://huggingface.co/Gopichand0516) · [@GopichandAI](https://twitter.com/GopichandAI)
 
 Built for the **Meta OpenEnv Hackathon (Scaler × Meta PyTorch)** — April 2026
-
----
