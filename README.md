@@ -5,7 +5,7 @@ colorFrom: blue
 colorTo: green
 sdk: docker
 pinned: false
-short_description: RL environment for smart contract auditing — OpenEnv Hackathon 2026
+short_description: RL env for Solidity audit via GRPO + OpenEnv
 ---
 
 # 🔐 Smart Contract Audit Agent — GRPO + RL Training
@@ -79,20 +79,20 @@ The RL-trained agent detects real Solidity vulnerabilities:
 ```
 Base Model:     Qwen2.5-1.5B-Instruct (4-bit QLoRA via Unsloth)
 RL Algorithm:   GRPO (Group Relative Policy Optimization)
-Adapter:        LoRA r=16, α=16 — 1.78% params trainable
+Adapter:        LoRA r=16, alpha=16 -- 1.78% params trainable
 Environment:    FastAPI HF Space (reset/step OpenEnv API)
-Base Class:     server/env.py → class SmartContractAuditEnv(OpenEnv.Environment)
-Reward Fn:      env_reward + format_score + coverage_score − hallucination_penalty
+Base Class:     server/env.py -> class SmartContractAuditEnv(OpenEnv.Environment)
+Reward Fn:      env_reward + format_score + coverage_score - hallucination_penalty
 ```
 
 ### 💰 Reward Function (Multi-Component)
 
 ```python
 total_reward = (
-    env_reward      # 0.0–1.0  — Did you catch the real vulnerability?
-  + format_score   # 0.0–0.3  — Is the report properly structured?
-  + coverage_score # 0.0–0.2  — Did you explain IMPACT + FIX?
-  + penalty        # -0.2     — Penalty for claiming NO_VULNERABILITY when one exists
+    env_reward      # 0.0-1.0  -- Did you catch the real vulnerability?
+  + format_score   # 0.0-0.3  -- Is the report properly structured?
+  + coverage_score # 0.0-0.2  -- Did you explain IMPACT + FIX?
+  + penalty        # -0.2     -- Penalty for claiming NO_VULNERABILITY when one exists
 )
 # Clipped to [0.0, 1.5]
 ```
@@ -104,8 +104,8 @@ GRPOConfig(
     max_steps=200,
     learning_rate=5e-6,
     per_device_train_batch_size=1,
-    gradient_accumulation_steps=4,   # effective batch = 4
-    num_generations=4,               # sample 4 responses per prompt
+    gradient_accumulation_steps=4,
+    num_generations=4,
     max_completion_length=350,
     temperature=0.9,
     optim="adamw_8bit",
@@ -158,8 +158,8 @@ print(tokenizer.decode(output[0], skip_special_tokens=True))
 smart-contract-audit-env/
 ├── server/                  # FastAPI OpenEnv environment
 ├── training/
-│   ├── Smart_Contract_Audit_GRPO_Training_Full.ipynb  ← Full notebook (13 cells, real outputs)
-│   └── reward_curve.png                               ← Training reward chart
+│   ├── Smart_Contract_Audit_GRPO_Training_Full.ipynb
+│   └── reward_curve.png
 ├── BLOG.md
 ├── inference.py
 ├── client.py
@@ -182,7 +182,7 @@ smart-contract-audit-env/
 
 ## 🔒 Security Note
 
-This project uses `os.environ.get('HF_TOKEN')` or Colab Secrets for authentication. **Never hardcode tokens.** Add your HF token via the Colab Secrets panel (🔑 icon in sidebar).
+This project uses `os.environ.get('HF_TOKEN')` or Colab Secrets for authentication. **Never hardcode tokens.**
 
 ---
 
