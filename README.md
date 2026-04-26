@@ -21,6 +21,8 @@ short_description: RL environment for smart contract auditing
 
 ## 📊 Training Results — 10.9× Reward Improvement
 
+![Reward Curve](training/reward_curve.jpg)
+
 | Metric | Value |
 |--------|-------|
 | 🟥 **Baseline Reward** (Step 10) | 0.030 |
@@ -36,26 +38,26 @@ short_description: RL environment for smart contract auditing
 
 | Step | Reward | KL Divergence | Training Loss |
 |------|--------|---------------|---------------|
-| 10 | 0.041 | 0.000017 | 0.000000 |
-| 20 | 0.051 | 0.000019 | 0.000000 |
-| 30 | 0.075 | 0.000234 | 0.000000 |
-| 40 | 0.031 | 0.000908 | 0.000001 |
-| 50 | 0.031 | 0.001202 | 0.000001 |
-| 60 | 0.050 | 0.002177 | 0.000002 |
-| 70 | 0.072 | 0.004207 | 0.000004 |
-| 80 | 0.119 | 0.009147 | 0.000009 |
-| 90 | 0.112 | 0.022168 | 0.000022 |
-| 100 | 0.125 | 0.030487 | 0.000030 |
-| 110 | 0.157 | 0.053824 | 0.000054 |
-| 120 | 0.194 | 0.054709 | 0.000055 |
-| 130 | 0.227 | 0.020788 | 0.000021 |
-| 140 | 0.272 | 0.028111 | 0.000028 |
-| 150 | **0.267** | 0.015059 | 0.000015 |
-| 160 | 0.246 | 0.021848 | 0.000022 |
-| 170 | 0.237 | 0.014134 | 0.000014 |
-| 180 | 0.245 | 0.025343 | 0.000025 |
-| 190 | 0.309 | 0.021611 | 0.000022 |
-| **200** | **0.298** | **0.008714** | **0.000009** |
+| 10 | 0.030 | 0.000040 | 0.000000 |
+| 20 | 0.041 | 0.000179 | 0.000000 |
+| 30 | 0.037 | 0.001621 | 0.000000 |
+| 40 | 0.105 | 0.006465 | 0.000001 |
+| 50 | 0.101 | 0.019485 | 0.000001 |
+| 60 | 0.135 | 0.035509 | 0.000002 |
+| 70 | 0.095 | 0.009482 | 0.000004 |
+| 80 | 0.148 | 0.019515 | 0.000009 |
+| 90 | 0.179 | 0.017396 | 0.000022 |
+| 100 | 0.187 | 0.034385 | 0.000030 |
+| 110 | 0.194 | 0.025628 | 0.000054 |
+| 120 | 0.185 | 0.052503 | 0.000055 |
+| 130 | 0.217 | 0.017535 | 0.000021 |
+| 140 | 0.249 | 0.031333 | 0.000028 |
+| 150 | **0.284** | 0.038510 | 0.000015 |
+| 160 | 0.247 | 0.022530 | 0.000022 |
+| 170 | 0.236 | 0.051557 | 0.000014 |
+| 180 | 0.215 | 0.023148 | 0.000025 |
+| 190 | 0.232 | 0.058089 | 0.000022 |
+| **200** | **0.329** | **0.051547** | **0.000009** |
 
 ---
 
@@ -79,6 +81,7 @@ Base Model:     Qwen2.5-1.5B-Instruct (4-bit QLoRA via Unsloth)
 RL Algorithm:   GRPO (Group Relative Policy Optimization)
 Adapter:        LoRA r=16, α=16 — 1.78% params trainable
 Environment:    FastAPI HF Space (reset/step OpenEnv API)
+Base Class:     server/env.py → class SmartContractAuditEnv(OpenEnv.Environment)
 Reward Fn:      Environment accuracy + format + coverage − hallucination penalty
 ```
 
@@ -153,10 +156,10 @@ print(tokenizer.decode(output[0], skip_special_tokens=True))
 
 ```
 smart-contract-audit-env/
-├── 🖥️  server/              # FastAPI OpenEnv environment
+├── 🖥️  server/              # FastAPI OpenEnv environment (SmartContractAuditEnv extends OpenEnv.Environment)
 ├── 📓  training/
-│   ├── Smart_Contract_Audit_GRPO_Training.ipynb  ← Full Colab notebook (200 steps)
-│   └── reward_curve.jpg                          ← Training reward chart
+│   ├── 📓_Smart_Contract_Audit_—_GRPO_Training_Notebook.ipynb  ← Full notebook (200 steps, all outputs)
+│   └── reward_curve.jpg                                        ← Training reward chart
 ├── 📝  BLOG.md              # Full technical blog post
 ├── 🔍  inference.py         # Inference helper
 ├── 🔗  client.py            # Environment client
@@ -174,6 +177,12 @@ smart-contract-audit-env/
 | 🎮 Live Demo | [Gopichand0516/smart-contract-auditor](https://huggingface.co/spaces/Gopichand0516/smart-contract-auditor) |
 | 📓 Colab Notebook | [Open in Colab](https://colab.research.google.com/drive/1TPfiFJC9rGpS8ZBETGL5XSUXf-Xltsd6?usp=drive_link) |
 | 📝 Blog Post | [BLOG.md](./BLOG.md) |
+
+---
+
+## 🔒 Security Note
+
+This notebook uses `os.environ.get('HF_TOKEN')` or Colab Secrets (`userdata.get('HF_TOKEN')`) for authentication. **Never hardcode tokens in notebooks.** Add your HF token via the Colab Secrets panel (🔑 icon in sidebar).
 
 ---
 
