@@ -1,3 +1,12 @@
+---
+title: Smart Contract Audit Env
+emoji: ??
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+short_description: OpenEnv-compatible smart contract vulnerability audit environment for RL training
+---
 # 🔐 Smart Contract Audit Agent — GRPO + RL Training
 
 [![Model on HF](https://img.shields.io/badge/🤗%20Model-Gopichand0516%2Fsmart--contract--audit--qwen--grpo-blue)](https://huggingface.co/Gopichand0516/smart-contract-audit-qwen-grpo)
@@ -176,3 +185,4 @@ smart-contract-audit-env/
 [![HuggingFace](https://img.shields.io/badge/🤗-Gopichand0516-yellow)](https://huggingface.co/Gopichand0516)
 
 Built for the **Meta PyTorch OpenEnv Community Hackathon** — April 2026 🎉
+
