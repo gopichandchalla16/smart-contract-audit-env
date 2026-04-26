@@ -5,7 +5,7 @@ colorFrom: blue
 colorTo: green
 sdk: docker
 pinned: false
-short_description: RL env for Solidity audit via GRPO + OpenEnv — multi-step iterative loop, 3-tier difficulty
+short_description: RL env for Solidity audit via GRPO + OpenEnv
 ---
 
 # 🔐 Smart Contract Audit Agent — RL Environment (OpenEnv + GRPO)
@@ -151,7 +151,7 @@ GRPOConfig(
     learning_rate=5e-6,
     per_device_train_batch_size=1,
     gradient_accumulation_steps=4,
-    num_generations=4,           # 4 candidate responses per prompt
+    num_generations=4,
     max_completion_length=350,
     temperature=0.9,
     optim="adamw_8bit",
@@ -175,8 +175,6 @@ GRPOConfig(
 
 ## 🆚 Before vs. After Training
 
-**Same contract. Same question. Completely different output quality.**
-
 **❌ Untrained base model:**
 ```
 "1. Reentrancy: The withdraw function can be reentered..." ← vague, no location, no fix
@@ -193,8 +191,6 @@ IMPACT: 100% of contract funds drainable in single transaction
 FIX: Apply Checks-Effects-Interactions — move balances[msg.sender] -= amount
      BEFORE the external call. Or use OpenZeppelin ReentrancyGuard.
 ```
-
-That's a real, structured, actionable audit report — produced by a 1.5B model, trained in 85 minutes, on a free GPU.
 
 ---
 
@@ -236,7 +232,7 @@ contract Vulnerable {
     function withdraw() public {
         uint amount = balances[msg.sender];
         (bool ok,) = msg.sender.call{value: amount}("");
-        balances[msg.sender] = 0;  // state updated AFTER external call!
+        balances[msg.sender] = 0;
     }
 }
 """
@@ -253,16 +249,16 @@ print(tokenizer.decode(output[0], skip_special_tokens=True))
 ```
 smart-contract-audit-env/
 ├── server/
-│   ├── env.py                          # SmartContractAuditEnv(OpenEnv.Environment)
-│   ├── smart_contract_audit_env_environment.py  # 3-tier contracts + reward logic
-│   └── models.py                       # Pydantic schemas
+│   ├── env.py
+│   ├── smart_contract_audit_env_environment.py
+│   └── models.py
 ├── training/
 │   ├── Smart_Contract_Audit_GRPO_Training_Full.ipynb
-│   └── reward_curve.jpg                # Real training evidence
-├── BLOG.md                             # Full technical writeup
-├── inference.py                        # Run trained model
-├── client.py                           # OpenEnv client example
-├── openenv.yaml                        # OpenEnv framework config
+│   └── reward_curve.jpg
+├── BLOG.md
+├── inference.py
+├── client.py
+├── openenv.yaml
 └── README.md
 ```
 
