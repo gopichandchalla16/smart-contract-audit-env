@@ -5,7 +5,7 @@ colorFrom: blue
 colorTo: green
 sdk: docker
 pinned: false
-short_description: RL environment for smart contract auditing
+short_description: RL environment for smart contract auditing — OpenEnv Hackathon 2026
 ---
 
 # 🔐 Smart Contract Audit Agent — GRPO + RL Training
@@ -21,7 +21,7 @@ short_description: RL environment for smart contract auditing
 
 ## 📊 Training Results — 10.9× Reward Improvement
 
-![Reward Curve](training/reward_curve.jpg)
+![Reward Curve](training/reward_curve.png)
 
 | Metric | Value |
 |--------|-------|
@@ -65,8 +65,8 @@ short_description: RL environment for smart contract auditing
 
 The RL-trained agent detects real Solidity vulnerabilities:
 
-- 🔄 **Reentrancy attacks** — state updated after external call (e.g. the classic drain-the-contract bug)
-- 🔓 **Missing access control** — functions callable by anyone with no `onlyOwner` check
+- 🔄 **Reentrancy attacks** — state updated after external call
+- 🔓 **Missing access control** — functions callable by anyone with no `onlyOwner`
 - ➕ **Integer overflow/underflow** — unchecked arithmetic pre-Solidity 0.8.0
 - 🔮 **Oracle manipulation** — price feeds that can be flash-loan attacked
 - 🎭 **tx.origin misuse** — phishing-vulnerable authentication
@@ -82,7 +82,7 @@ RL Algorithm:   GRPO (Group Relative Policy Optimization)
 Adapter:        LoRA r=16, α=16 — 1.78% params trainable
 Environment:    FastAPI HF Space (reset/step OpenEnv API)
 Base Class:     server/env.py → class SmartContractAuditEnv(OpenEnv.Environment)
-Reward Fn:      Environment accuracy + format + coverage − hallucination penalty
+Reward Fn:      env_reward + format_score + coverage_score − hallucination_penalty
 ```
 
 ### 💰 Reward Function (Multi-Component)
@@ -156,15 +156,15 @@ print(tokenizer.decode(output[0], skip_special_tokens=True))
 
 ```
 smart-contract-audit-env/
-├── 🖥️  server/              # FastAPI OpenEnv environment (SmartContractAuditEnv extends OpenEnv.Environment)
-├── 📓  training/
-│   ├── 📓_Smart_Contract_Audit_—_GRPO_Training_Notebook.ipynb  ← Full notebook (200 steps, all outputs)
-│   └── reward_curve.jpg                                        ← Training reward chart
-├── 📝  BLOG.md              # Full technical blog post
-├── 🔍  inference.py         # Inference helper
-├── 🔗  client.py            # Environment client
-├── 📋  openenv.yaml         # OpenEnv spec
-└── 📖  README.md
+├── server/                  # FastAPI OpenEnv environment
+├── training/
+│   ├── Smart_Contract_Audit_GRPO_Training_Full.ipynb  ← Full notebook (13 cells, real outputs)
+│   └── reward_curve.png                               ← Training reward chart
+├── BLOG.md
+├── inference.py
+├── client.py
+├── openenv.yaml
+└── README.md
 ```
 
 ---
@@ -182,13 +182,13 @@ smart-contract-audit-env/
 
 ## 🔒 Security Note
 
-This notebook uses `os.environ.get('HF_TOKEN')` or Colab Secrets (`userdata.get('HF_TOKEN')`) for authentication. **Never hardcode tokens in notebooks.** Add your HF token via the Colab Secrets panel (🔑 icon in sidebar).
+This project uses `os.environ.get('HF_TOKEN')` or Colab Secrets for authentication. **Never hardcode tokens.** Add your HF token via the Colab Secrets panel (🔑 icon in sidebar).
 
 ---
 
 ## 👤 Author
 
-**Gopichand Challa** — CSE Graduate, Web3 + AI Builder 🛠️
+**Gopichand Challa** — CSE Graduate, Web3 + AI Builder
 
 [![GitHub](https://img.shields.io/badge/GitHub-gopichandchalla16-black?logo=github)](https://github.com/gopichandchalla16)
 [![HuggingFace](https://img.shields.io/badge/🤗-Gopichand0516-yellow)](https://huggingface.co/Gopichand0516)
