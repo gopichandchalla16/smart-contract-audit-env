@@ -2,6 +2,8 @@
 
 *By Gopichand Challa | Meta PyTorch OpenEnv Hackathon, April 2026*
 
+🎥 **[Watch the Demo Video →](https://www.loom.com/share/f893d0641f30456d909776b661ab4bc6)**
+
 ---
 
 I want to tell you about the 85 minutes that changed how I think about AI.
@@ -98,14 +100,14 @@ The **Hard** contract is a real-world-style DeFi lending protocol with over 100 
 
 ### The Reward Function (Multi-Component)
 
-```python
-total_reward = (
-    env_reward       # 0.0–1.0  — Did you identify the real vulnerability?
-  + format_score    # 0.0–0.3  — Structured report (severity / location / fix)?
-  + coverage_score  # 0.0–0.2  — Impact + attack vector + mitigation explained?
-  + delta_bonus     # +0.1     — Did you improve over your previous step?
-  + penalty         # -0.2     — False "NO_VULNERABILITY" claim when one exists
-)
+```
+total_reward = env_reward      (0.0–1.0)  Did you find the real vulnerability?
+             + format_score    (0.0–0.3)  Structured report: severity / location / fix?
+             + coverage_score  (0.0–0.2)  Impact + attack vector + mitigation explained?
+             + delta_bonus     (+0.1)     Did you improve over your previous step?
+             - penalty         (-0.2)     False "NO_VULNERABILITY" when one exists
+             ─────────────────────────────
+             Clipped to [0.0, 1.5]
 ```
 
 The **anti-hallucination penalty** was a late addition — and essential. Early in training the model had a bad habit of confidently saying "NO_VULNERABILITIES_FOUND" when it didn't know the answer. The penalty pushed it to actually try.
@@ -212,6 +214,7 @@ That's a real audit report. Structured, specific, actionable. Produced by a 1.5B
 
 | Resource | Link |
 |----------|------|
+| 🎥 **Demo Video** | [Watch on Loom](https://www.loom.com/share/f893d0641f30456d909776b661ab4bc6) |
 | 🏠 **Environment Space** | [smart-contract-audit-env](https://huggingface.co/spaces/Gopichand0516/smart-contract-audit-env) |
 | 🎮 **Live Demo** | [smart-contract-auditor](https://huggingface.co/spaces/Gopichand0516/smart-contract-auditor) |
 | 🤗 **Model Weights** | [smart-contract-audit-qwen-grpo](https://huggingface.co/Gopichand0516/smart-contract-audit-qwen-grpo) |

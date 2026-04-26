@@ -14,6 +14,7 @@ short_description: RL env for Solidity audit via GRPO + OpenEnv
 [![Model on HF](https://img.shields.io/badge/🤗%20Trained%20Model-smart--contract--audit--qwen--grpo-green)](https://huggingface.co/Gopichand0516/smart-contract-audit-qwen-grpo)
 [![Demo Space](https://img.shields.io/badge/🤗%20Live%20Demo-smart--contract--auditor-orange)](https://huggingface.co/spaces/Gopichand0516/smart-contract-auditor)
 [![Colab](https://img.shields.io/badge/📓%20Training%20Notebook-Open%20in%20Colab-yellow)](https://colab.research.google.com/drive/1TPfiFJC9rGpS8ZBETGL5XSUXf-Xltsd6?usp=drive_link)
+[![Demo Video](https://img.shields.io/badge/🎥%20Demo%20Video-Watch%20on%20Loom-purple)](https://www.loom.com/share/f893d0641f30456d909776b661ab4bc6)
 [![Hackathon](https://img.shields.io/badge/Meta%20PyTorch-OpenEnv%20Hackathon%202026-red)](https://github.com/gopichandchalla16/smart-contract-audit-env)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
@@ -44,6 +45,7 @@ curl -X POST https://gopichand0516-smart-contract-audit-env.hf.space/step \
 Expected response includes: `"reward": 0.6–1.0`, `"done": false/true`, `"feedback": "..."`, `"score_breakdown": {...}`
 
 📝 **[Read the full writeup →](https://huggingface.co/spaces/Gopichand0516/smart-contract-audit-env/blob/main/BLOG.md)**
+🎥 **[Watch the Demo Video →](https://www.loom.com/share/f893d0641f30456d909776b661ab4bc6)**
 
 ---
 
@@ -55,6 +57,7 @@ Expected response includes: `"reward": 0.6–1.0`, `"done": false/true`, `"feedb
 | 🤖 **Trained Model** | [Gopichand0516/smart-contract-audit-qwen-grpo](https://huggingface.co/Gopichand0516/smart-contract-audit-qwen-grpo) |
 | 🎮 **Live Gradio Demo** | [spaces/Gopichand0516/smart-contract-auditor](https://huggingface.co/spaces/Gopichand0516/smart-contract-auditor) |
 | 📓 **Training Notebook (Colab)** | [Open in Colab](https://colab.research.google.com/drive/1TPfiFJC9rGpS8ZBETGL5XSUXf-Xltsd6?usp=drive_link) |
+| 🎥 **Demo Video** | [Watch on Loom](https://www.loom.com/share/f893d0641f30456d909776b661ab4bc6) |
 | 📝 **Blog Post** | [Read BLOG.md →](https://huggingface.co/spaces/Gopichand0516/smart-contract-audit-env/blob/main/BLOG.md) |
 | 💻 **GitHub Repo** | [gopichandchalla16/smart-contract-audit-env](https://github.com/gopichandchalla16/smart-contract-audit-env) |
 
@@ -155,7 +158,7 @@ total_reward = env_reward      (0.0–1.0)  Did you find the real vulnerability?
              + coverage_score  (0.0–0.2)  Impact + attack vector + mitigation explained?
              + delta_bonus     (+0.1)     Did you improve over your previous step?
              - penalty         (-0.2)     False "NO_VULNERABILITY" when one exists
-             ──────────────────────────
+             ─────────────────────────────
              Clipped to [0.0, 1.5]
 ```
 
