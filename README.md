@@ -23,6 +23,30 @@ A **multi-step reinforcement learning environment** built on the OpenEnv framewo
 
 ---
 
+## ⚡ Quick Judge Test (60 seconds — no setup required)
+
+**Step 1 — Hit /reset to get a live Solidity contract:**
+```bash
+curl -X POST https://gopichand0516-smart-contract-audit-env.hf.space/reset \
+  -H "Content-Type: application/json" \
+  -d '{"task_id": "easy"}' | python3 -m json.tool
+```
+
+**Step 2 — Submit an audit and get a reward back:**
+```bash
+curl -X POST https://gopichand0516-smart-contract-audit-env.hf.space/step \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "VULNERABILITY: Reentrancy Attack\nSEVERITY: High\nLOCATION: withdraw() line 14, external call before state update\nATTACK VECTOR: Attacker re-calls withdraw via fallback before balance resets\nIMPACT: 100% fund drain\nFIX: Move balances[msg.sender] = 0 before external call"
+  }' | python3 -m json.tool
+```
+
+Expected response includes: `"reward": 0.6–1.0`, `"done": false/true`, `"feedback": "..."`, `"score_breakdown": {...}`
+
+📝 **[Read the full writeup →](https://huggingface.co/spaces/Gopichand0516/smart-contract-audit-env/blob/main/BLOG.md)**
+
+---
+
 ## 🔗 All Links (Judges: Start Here)
 
 | Resource | URL |
@@ -31,7 +55,7 @@ A **multi-step reinforcement learning environment** built on the OpenEnv framewo
 | 🤖 **Trained Model** | [Gopichand0516/smart-contract-audit-qwen-grpo](https://huggingface.co/Gopichand0516/smart-contract-audit-qwen-grpo) |
 | 🎮 **Live Gradio Demo** | [spaces/Gopichand0516/smart-contract-auditor](https://huggingface.co/spaces/Gopichand0516/smart-contract-auditor) |
 | 📓 **Training Notebook (Colab)** | [Open in Colab](https://colab.research.google.com/drive/1TPfiFJC9rGpS8ZBETGL5XSUXf-Xltsd6?usp=drive_link) |
-| 📝 **Blog Post** | [BLOG.md](./BLOG.md) |
+| 📝 **Blog Post** | [Read BLOG.md →](https://huggingface.co/spaces/Gopichand0516/smart-contract-audit-env/blob/main/BLOG.md) |
 | 💻 **GitHub Repo** | [gopichandchalla16/smart-contract-audit-env](https://github.com/gopichandchalla16/smart-contract-audit-env) |
 
 ---
@@ -125,15 +149,14 @@ Difficulty:     3 levels (easy → medium → hard)
 
 ### 💰 Multi-Component Reward Function
 
-```python
-total_reward = (
-    env_reward       # 0.0–1.0  — Did you identify the real vulnerability?
-  + format_score    # 0.0–0.3  — Is the report structured (severity/location/fix)?
-  + coverage_score  # 0.0–0.2  — Did you explain IMPACT + attack vector + mitigation?
-  + delta_bonus     # +0.1     — Did you improve over your previous step?
-  + penalty         # -0.2     — Penalised for false "NO_VULNERABILITY" claims
-)
-# Clipped to [0.0, 1.5]
+```
+total_reward = env_reward      (0.0–1.0)  Did you find the real vulnerability?
+             + format_score    (0.0–0.3)  Structured report: severity / location / fix?
+             + coverage_score  (0.0–0.2)  Impact + attack vector + mitigation explained?
+             + delta_bonus     (+0.1)     Did you improve over your previous step?
+             - penalty         (-0.2)     False "NO_VULNERABILITY" when one exists
+             ──────────────────────────
+             Clipped to [0.0, 1.5]
 ```
 
 ### OpenEnv API Endpoints
@@ -199,7 +222,7 @@ FIX: Apply Checks-Effects-Interactions — move balances[msg.sender] -= amount
 ### ▶️ Try the Live Demo
 👉 **[smart-contract-auditor Space](https://huggingface.co/spaces/Gopichand0516/smart-contract-auditor)** — paste any Solidity contract, get an audit report
 
-### 🔁 Interact With the Environment API
+### 🔁 Interact With the Environment API (Python)
 
 ```python
 import requests
