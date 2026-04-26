@@ -5,7 +5,7 @@ colorFrom: blue
 colorTo: green
 sdk: docker
 pinned: false
-short_description: OpenEnv-compatible smart contract vulnerability audit environment for RL training
+short_description: RL environment for smart contract auditing
 ---
 # 🔐 Smart Contract Audit Agent — GRPO + RL Training
 
@@ -185,4 +185,5 @@ smart-contract-audit-env/
 [![HuggingFace](https://img.shields.io/badge/🤗-Gopichand0516-yellow)](https://huggingface.co/Gopichand0516)
 
 Built for the **Meta PyTorch OpenEnv Community Hackathon** — April 2026 🎉
+
 
